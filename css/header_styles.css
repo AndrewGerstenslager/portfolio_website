@@ -1,3 +1,4 @@
+
 nav{
     display: flex;
     width: 100%;
@@ -23,3 +24,8 @@ nav ul li a{
 nav ul li a:hover{
     color: blue;
 }
+
+@media only screen and (max-width: 810px) {
+
+    
+  }
