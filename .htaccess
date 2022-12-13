@@ -1,15 +1,3 @@
 RewriteEngine On
-RewriteCond %{index.html} !-f
-RewriteRule ^([^\.]+)$ $1.html [NC,L] 
-
-RewriteCond %{about.html} !-f
-RewriteRule ^([^\.]+)$ $1.html [NC,L] 
-
-RewriteCond %{portfolio.html} !-f
-RewriteRule ^([^\.]+)$ $1.html [NC,L] 
-
-RewriteCond %{services.html} !-f
-RewriteRule ^([^\.]+)$ $1.html [NC,L] 
-
-RewriteCond %{ai_game.html} !-f
-RewriteRule ^([^\.]+)$ $1.html [NC,L] 
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^([^\.]+)$ $1.php [NC,L]
