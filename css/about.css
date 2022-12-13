@@ -12,6 +12,18 @@
 
 }
 
+.details h1{
+    font-size: 50px;
+    color: #212121;
+    margin-bottom: 10px;
+}
+
+.details h3{
+    font-size: 90px;
+    color: #212121;
+    margin-bottom: 10px;
+}
+
 .container{
     position: relative;
     width: 100%;
