@@ -57,6 +57,9 @@
 }
 
 @media only screen and (max-width: 1100px) {
+    body {
+        background-color: lightblue;
+      }
     .portrait{
         width: 80%;
         position: relative;
