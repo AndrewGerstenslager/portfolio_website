@@ -60,16 +60,6 @@ p{
     margin-bottom: 20px;
 }
 
-@media only screen and (max-width: 1000px) {
-  .portrait{
-      width: 80%;
-      height: auto;
-      position: relative;
-      left: 10%;
-      margin-top: 470px
-  }
-}
-
 .stack {
   display: grid;
   grid-template-columns: 1fr;
@@ -122,10 +112,18 @@ p{
   4%, 100% {  text-shadow: none; transform: none; }
 }
 
+@media only screen and (max-width: 1200px) {
+  .portrait{
+      width: 80%;
+      height: auto;
+      position: relative;
+      left: 10%;
+      margin-top: 550px
+  }
+}
 
 
-
-@media only screen and (max-width: 1000px) {
+@media only screen and (max-width: 800px) {
   h1{
     font-size: 50px;
     color: #212121;
@@ -142,4 +140,18 @@ p{
       color: #555;
       line-height: 22px;
   }
+
+  .stack span {
+    font-size: 30px;
+  }
+
+  .portrait{
+    width: 80%;
+    height: auto;
+    position: relative;
+    left: 10%;
+    margin-top: 420px
+  }
 }
+
+
