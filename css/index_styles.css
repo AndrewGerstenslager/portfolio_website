@@ -68,7 +68,7 @@ p{
 
 .portrait{
     width: 40%;
-    height: auto;
+    height:auto;
     max-width: 80%;
     position: absolute;
     margin-top: 1%;
@@ -79,6 +79,7 @@ p{
 @media only screen and (max-width: 900px) {
     .portrait{
         width: 80%;
+        height: auto;
         position: relative;
         left: 10%;
         margin-top: 500px
