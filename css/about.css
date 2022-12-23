@@ -12,29 +12,47 @@
 
 }
 
-.details h1{
-    font-size: 50px;
+/*Start Text content*/
+h1{
+    text-align: center;
+    font-size: 55px;
+    color: #212121;
+    margin-bottom: 10px;
+    margin-top: 30px;
+}
+
+h2{
+    font-size: 40px;
     color: #212121;
     margin-bottom: 10px;
 }
 
-.details h3{
-    font-size: 90px;
+h3{
+    font-size: 25px;
     color: #212121;
-    margin-bottom: 10px;
 }
+
+p{
+    font-size: 20px;
+    
+}
+
+
+/*End text content*/
 
 .container{
     position: relative;
-    width: 100%;
     max-width: 80%;
-    background: #CFE8FF;;
-    margin: 8%;
+    background: #CFE8FF;
+    margin-left: 8%;
+    margin-right: 8%;
+    margin-top: 3%;
     padding: 10px 20px;
     border-radius: 7px;
     resize: horizontal;
 }
 
+/*Start skill box content*/
 .container .skill-box{
     width: 100%;
     margin: 25px 0;
@@ -42,7 +60,7 @@
 
 .skill-box .title{
     display: block;
-    font-size: 18px;
+    font-size: 25px;
     font-weight: 600;
     color: #333;
     margin-bottom: 30px;
@@ -77,8 +95,9 @@
     width: 00%;
     animation-delay: 0.3s;
 }
+/*End skill box content*/
 
-
+/*Start animations for progress bars*/
 @keyframes progress {
     0%{
         width: 0;
@@ -111,4 +130,58 @@
     background-color: #4070f4;
     transform: translateX(-50%) rotate(45deg);
 
+}
+/*End animations for progress bars*/
+
+/* start collapsible content*/
+details {
+    user-select: none;
+    background-color:#aed6ff;
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+details>summary span.icon {
+    width: 24px;
+    height: 24px;
+    font-size: 20px;
+    transition: all 0.3s;
+    margin-left: auto;
+}
+
+details[open] summary span.icon {
+    transform: rotate(180deg);  
+}
+
+details[open] .center{
+    justify-content: center;
+}
+
+summary {
+    display: flex;
+    cursor: pointer;
+}
+
+summary::-webkit-details-marker {
+    display: none;
+}
+/* End collapsible content */
+
+
+
+.imageHolder{
+    width: 100%;
+    margin-top: 12px;
+    display: flex;
+    box-sizing: border-box;
+    padding: 10px 5px;
+}
+
+.imageHolder > img.wheelImage {
+    box-sizing: border-box;
+    width: calc(50% - 10px);
+    margin: 0 5px;
+    display:block; 
+    border: 1px solid #fff;
 }
