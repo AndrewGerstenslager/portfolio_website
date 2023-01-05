@@ -1,29 +1,74 @@
 ﻿<!DOCTYPE html>
 <html>
-<head>
+  <head>
     <meta charset="UTF-8" />
-    <title>Portfolio</title>
+    <title>Andrew's Website</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     
     <link rel="stylesheet" href="css/header_styles.css" />
-    <link rel="stylesheet" href="css/portfolio.css" />
-    <link rel="icon" type="image/x-icon" href="images/favicon.ico">
+    <link rel="stylesheet" href="css/slider_styles.css" />
+    <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+    
 </head>
+<nav>
+  <img src="images/logo2-nobg.png" 
+      class="logo" />
+      <div class="headerSpace"></div>
+  <ul>
+      <!--TODO: https://www.youtube.com/watch?v=-eVgT9pLHhI&ab_channel=TylerPotts-->
+      <li><a href="index.html">HOME</a></li>
+      <li><a href="about.html">ABOUT</a></li>
+      <li><a href="portfolio.html">PORTFOLIO</a></li>
+      <li><a href="services.html">SERVICES</a></li>
+      <li><a href="ai_game.html">LIVE AI DEMO</a></li>
+  </ul>
+</nav>
 <body>
-    <nav>
-        <img src="images/logo2-nobg.png" 
-            width="200"
-            height="120"
-            class="logo" />
-        <ul>
-            <li><a href="index.html">HOME</a></li>
-            <li><a href="about.html">ABOUT</a></li>
-            <li><a href="portfolio.html">PORTFOLIO</a></li>
-            <li><a href="services.html">SERVICES</a></li>
-            <li><a href="ai_game.html">LIVE AI DEMO</a></li>
-        </ul>
-    </nav>
-    <p>This is the portfolio page</p>
+    
+    <div class="wrapper">
+        <h2>Robotics</h2>
+        <section class="details-group">
+          <details class="details" open>
+            <summary class="details__summary">
+              ROS2
+            </summary>
+            <div class="details__content">
+              <p>ROS2 details</p>
+            </div>
+          </details>
+      
+          <details class="details">
+            <summary class="details__summary">Serial Communication</summary>
+            <div class="details__content">
+              <p>With a little help from JavaScript, we can supplement the default behavior to make an accordion that is super smooth and nicely-styled, but still degrades gracefully.</p>
+              <p>This accordion uses JS to calculate heights so we can use CSS transitions without any max-height hacks. It also sets a timeout before removing the <code>open</code> attribute, so the content of the <code>&lt;details&gt;</code> element will stay visible until the height transition is finished.</p>
+              <p>The cool part is that since we&rsquo;re using these modern HTML5 elements, the accordion should work just fine even with JavaScript disabled. <strong><em>Gasp!</em> A simple web component in 2018 that doesn&rsquo;t completely fail without JS?! Sound the alarm!</strong>
+            </div>
+          </details>
+      
+          <details class="details">
+            <summary class="details__summary">Python</summary>
+            <div class="details__content">
+              <ul>
+                <li>
+                  <strong><code>speed</code></strong> <em>(default: <code>300</code>)</em> Speed of the transition in milliseconds. Setting this in the plugin will override the value specified in the CSS.
+                </li>
+                <li>
+                  <strong><code>one_visible</code></strong> <em>(default: <code>false</code>)</em> Determines whether details can be toggled independently, or if only one can be visible at a time.
+                </li>
+              </ul>
+            </div>
+          </details>
+      
+          <details class="details">
+            <summary class="details__summary">Electrical</summary>
+            <div class="details__content">
+              <p>If you liked this pen, check out <a target="_blank" href="https://keithpickering.github.io">my portfolio site</a>. I&rsquo;m accepting new projects all the time, so drop me a line.</p>
+            </div>
+          </details>
+        </section>
+      </div>
 </body>
-</html>
+

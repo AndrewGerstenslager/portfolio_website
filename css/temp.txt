@@ -1,0 +1,35 @@
+
+/* start collapsible content*/
+details {
+    user-select: none;
+    background-color:#aed6ff;
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+details>summary span.icon {
+    width: 24px;
+    height: 24px;
+    font-size: 20px;
+    transition: all 0.3s;
+    margin-left: auto;
+}
+
+details[open] summary span.icon {
+    transform: rotate(180deg);  
+}
+
+details[open] .center{
+    justify-content: center;
+}
+
+summary {
+    display: flex;
+    cursor: pointer;
+}
+
+summary::-webkit-details-marker {
+    display: none;
+}
+/* End collapsible content */
