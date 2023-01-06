@@ -1,5 +1,9 @@
+.details{
+  margin-top: 5%;
+  margin-left: 5%;
+}
 
-.details a{
+.downloadButton a{
     background: #212121;
     padding: 10px 18px;
     text-decoration: none;
@@ -10,16 +14,26 @@
     border-radius: 5px;
 }
 
+.miscContainer a{
+  text-decoration: none;
+}
+
+.miscContainer a img{
+  height: 50px;
+}
+
 
 .portrait{
+  position: absolute;
     width: 40%;
     height:auto;
     max-width: 80%;
-    
     border-radius: 50%;
     left: 55%;
     margin-bottom: 20px;
     margin-top: 1%;
+    left: 50%;
+    top: 10%;
 }
 
 .stack {
@@ -76,8 +90,22 @@
 
 @media only screen and (max-width: 1200px) {
   .portrait{
+      padding-top: 2%;
+      position: relative;
       width: 80%;
       height: auto;
+      left: 10%;
+  }
+
+  .details{
+    margin-top: 0%;
+    margin-left: 0%;
+  }
+  .details *{
+    text-align: center;
+  }
+  .miscContainer{
+    text-align: center;
   }
 }
 
