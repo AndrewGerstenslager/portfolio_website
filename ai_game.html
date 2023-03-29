@@ -24,6 +24,28 @@
     </ul>
 </nav>
 <body>
-    <p>This is the ai game page</p>
+    <div class="container">
+        <div class="board">
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+        </div>
+    </div>
+    <div class="controls">
+        <label for="aiSelect">Choose AI:</label>
+        <select id="aiSelect">
+            <option value="ai1">AI 1</option>
+            <option value="ai2">AI 2</option>
+            <!-- Add more AI options here -->
+        </select>
+        <button id="restartBtn">Restart Game</button>
+    </div>
+    <script src="js/ai-game.js"></script>
 </body>
 </html>
