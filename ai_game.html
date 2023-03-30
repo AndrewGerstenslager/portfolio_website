@@ -9,6 +9,8 @@
     <link rel="stylesheet" href="css/header_styles.css" />
     <link rel="stylesheet" href="css/ai-game.css" />
     <link rel="icon" type="image/x-icon" href="images/favicon.ico">
+
+    <script src="js/ai-game.js"></script>
 </head>
 <nav>
     <img src="images/logo2-nobg.png" 
@@ -24,6 +26,8 @@
     </ul>
 </nav>
 <body>
+    <h2 style="text-align: center; margin-top: 10px;">Tic Tac Toe</h2>
+    <h4 style="text-align: center; margin-top: 10px;">Play against a bot at tic tac toe. You can select one of the different bots at the bottom and reset the game too.</h4>
     <div class="container">
         <div class="board">
             <div class="cell"></div>
@@ -37,15 +41,19 @@
             <div class="cell"></div>
         </div>
     </div>
+    <h4 style="text-align: center; margin-top: 10px;">Choose AI:<h4></h4>
     <div class="controls">
-        <label for="aiSelect">Choose AI:</label>
+        
         <select id="aiSelect">
-            <option value="ai1">AI 1</option>
-            <option value="ai2">AI 2</option>
+            <option value="ai1">Easy</option>
+            <option value="ai2">Strategic</option>
+            <option value="ai3">Impossible</option>
+            <option value="ai4">¿Impossible?</option>
             <!-- Add more AI options here -->
         </select>
         <button id="restartBtn">Restart Game</button>
     </div>
-    <script src="js/ai-game.js"></script>
+    
+    
 </body>
 </html>
