@@ -43,15 +43,15 @@
     opacity: 0;
 }
 .skill-per.bachelors{
-    width: 82%;
+    width: 90%;
     animation-delay: 0.1s;
 }
 .skill-per.finance_minor{
-    width: 83%;
+    width: 89%;
     animation-delay: 0.2s;
 }
 .skill-per.masters_cs{
-    width: 00%;
+    width: 36%;
     animation-delay: 0.3s;
 }
 /*End skill box content*/
