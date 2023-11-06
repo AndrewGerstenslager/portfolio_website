@@ -9,12 +9,14 @@
     padding: 10px 20px;
     border-radius: 7px;
     resize: horizontal;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
 /*Start skill box content*/
 .container .skill-box{
     width: 100%;
     margin: 25px 0;
+    border-radius: 10px;
 }
 
 .skill-box .title{
@@ -117,6 +119,7 @@
 .carousel-item {
     position: absolute;
     opacity: 0;
+    
     max-height: 1000px; /* Set a maximum height for your images */
     width: auto; /* This will maintain the aspect ratio */
     max-width: 50%; /* This will ensure the image is not wider than the carousel */
