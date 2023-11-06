@@ -52,6 +52,9 @@ line-height: 30px;
 
 /*NAVBAR CODE*/
 nav{
+  z-index: 1000; /* ensures the nav stays on top */
+  position: relative; /* adjust as necessary, could be absolute or fixed */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
   display: flex;
   width: 100%;
   margin: auto;
@@ -115,7 +118,9 @@ border-radius: 2px;
     position: absolute;
     top: 60px;
     left: 0;
-    background-color: #CFE8FF;
+    background-color: #cfe8ff;
+    box-shadow: 0 10px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+
 }
 
 .nav-list li {
@@ -125,5 +130,28 @@ border-radius: 2px;
 
 .menu-toggle {
     display: flex;
+    padding-right: 10px;
 }
+}
+
+/* Add padding around each nav item for more space */
+.nav-list li {
+  padding: 10px 20px; /* Adjust the values as needed */
+}
+
+/* Spacing between navigation options */
+.nav-item {
+  margin-right: 20px; /* Adjust the value as needed */
+}
+
+/* Animation styles for the elements */
+.animated-element {
+  opacity: 0;
+  transform: translateY(-20px);
+  transition: all 0.5s ease;
+}
+
+.animated-element-in-view {
+  opacity: 1;
+  transform: translateY(0);
 }

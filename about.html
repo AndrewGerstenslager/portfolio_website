@@ -10,20 +10,22 @@
     <link rel="stylesheet" href="css/about_styles.css" />
     <link rel="stylesheet" href="css/header_styles.css" />
     <link rel="stylesheet" href="css/slider_styles.css" />
-    <link rel="icon" type="image/x-icon" href="images/favicon.ico">
+    <link rel="icon" type="image/x-icon" href="/images/favicons/favicon.ico">
 </head>
 
 <nav>
-    <img src="images/logo2-nobg.png" 
+    <div class="logo">
+        <img src="images/logos_internal/logo-nobg.png" 
         class="logo" />
-        <div class="headerSpace"></div>
-    <ul>
-        <!--TODO: https://www.youtube.com/watch?v=-eVgT9pLHhI&ab_channel=TylerPotts-->
-        <li><a href="index.html">HOME</a></li>
-        <li><a href="about.html">ABOUT</a></li>
-        <li><a href="portfolio.html">PORTFOLIO</a></li>
-        <li><a href="services.html">SERVICES</a></li>
-        <li><a href="ai_game.html">LIVE AI DEMO</a></li>
+    </div>
+    <div class="menu-toggle" id="mobile-menu">
+        <span class="bar"></span>
+        <span class="bar"></span>
+        <span class="bar"></span>
+    </div>
+    <ul class="nav-list">
+        <li class="nav-item"><a href="index.html">Home</a></li>
+        <li class="nav-item"><a href="portfolio.html">Portfolio</a></li>
     </ul>
 </nav>
 
@@ -93,6 +95,7 @@
                     <div class="carousel">
                         <div class="carousel-inner">
                             <input class="carousel-open" type="radio" id="carousel-1" name="carousel" aria-hidden="true" hidden="" checked="checked">
+                            
                             <div class="carousel-item">
                                 <img src="images/eagle_scout_project_before.jpg">
                             </div>
@@ -164,6 +167,10 @@
             </details>
     </div>
 
-</body>
 
+<!-- jQuery Library -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- External jQuery Script for Menu Toggle -->
+<script src="js/menuToggle.js"></script>
+</body>
 </html>
