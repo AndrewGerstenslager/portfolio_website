@@ -1,7 +1,7 @@
 
     <div class="container">
         <p>A Collapsible:</p>
-        <button class="collapsible">Open Collapsible</button>
+        <button class="collapsible">Open Collapsible<span class="indicator">+</span></button>
         <div class="content">
           <!-- Image Carousel -->
             <div id="carouselExampleControls" class="carousel slide" data-ride="carousel">
@@ -31,14 +31,14 @@
 
     <div class="container">
         <p>Collapsible Set:</p>
-        <button class="collapsible">Open Section 1</button>
+        <button class="collapsible">Open Section 1<span class="indicator">+</span></button>
         <div class="content">
             <p>asdf</p>        </div>
-        <button class="collapsible">Open Section 2</button>
+        <button class="collapsible">Open Section 2<span class="indicator">+</span></button>
         <div class="content">
         <p>asdf</p>
         </div>
-        <button class="collapsible">Open Section 3</button>
+        <button class="collapsible">Open Section 3<span class="indicator">+</span></button>
         <div class="content">
         <p>asdf</p>
         </div>

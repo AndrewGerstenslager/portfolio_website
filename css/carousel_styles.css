@@ -1,4 +1,7 @@
 .collapsible {
+    display: flex;
+    justify-content: space-between; /* This will push the indicator to the right */
+    align-items: center; /* This will vertically center the text and indicator */
     background-color: #B2649F;
     color: white;
     cursor: pointer;
@@ -8,6 +11,11 @@
     text-align: left;
     outline: none;
     font-size: 25px;
+}
+
+.indicator {
+    font-size: 40px; /* Set the font size larger than the button text */
+    margin-left: 10px; /* Optional: Adds some space between the button text and the indicator */
 }
 
 .active, .collapsible:hover {
@@ -52,7 +60,7 @@ object-fit: cover; /* Cover the container without stretching */
 
     .carousel-inner .carousel-item img {
         /* If you want to limit the height of images on large screens */
-        max-height: 600px; /* Adjust this value as needed */
+        max-height: 800px; /* Adjust this value as needed */
         
     }
 
