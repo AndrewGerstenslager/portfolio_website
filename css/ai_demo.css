@@ -28,21 +28,3 @@
     background-color: #744167;
 }
 
-
-/* Default styles for narrow screens */
-#canvas-container, #result_box {
-    /* Styles for stacking elements vertically */
-}
-
-/* Styles for wide screens */
-@media screen and (min-width: 1200px) {
-    .wide-screen-layout {
-        /* Styles for placing elements side by side */
-        display: flex;
-    }
-
-    #canvas-container, #result_box {
-        /* Adjust widths, margins, etc., to fit side by side */
-        flex: 1;
-    }
-}
