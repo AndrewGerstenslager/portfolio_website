@@ -10,13 +10,26 @@
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="css/carousel_styles.css">
     <script src="js/carousel.js"></script>
+    <script src="js/ai_demo.js"></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
 
     <link rel="stylesheet" href="css/about_styles.css" />
     <link rel="stylesheet" href="css/header_styles.css" />
     <link rel="icon" type="image/x-icon" href="/images/favicons/favicon.ico">
+    <style>
+        * {
+        	overflow: hidden;
+        }
+        body {
+        	text-align: center;
+        }
+        h1 {
+        	color: green;
+        }
+    </style>
 </head>
 
 <nav>
@@ -39,8 +52,23 @@
 
 <body>
 
-    <h4 style="text-align: center; margin-top: 10px;">This page will have a cool ai demo soon</h4>
-
+    <h4 style="text-align: center; margin-top: 10px;">This page will have a cool AI demo soon</h4>
+    
+    <!-- Canvas setup -->
+    <div style="display: flex; justify-content: center; margin-top: 20px;">
+        <canvas id="canvas" width="256" height="256" style="border:1px solid #000000;"></canvas>
+    </div>
+    <!-- Preprocessed canvas for preview -->
+    <div style="display: flex; justify-content: center; margin-top: 20px;">
+        <canvas id="previewCanvas" width="28" height="28" style="border:1px solid #000000; image-rendering: pixelated; width: 140px; height: 140px;"></canvas>
+    </div>
+    
+    <!-- Buttons for user interaction -->
+    <div style="text-align: center; margin-top: 20px;">
+        <button id="clear-button">Clear Canvas</button>
+        <button id="predict-button">Predict</button>
+    </div>
+    
 </body>
 
 </html>
