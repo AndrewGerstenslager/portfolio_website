@@ -1,138 +1,263 @@
+//-------------------
+// GLOBAL variables
+//-------------------
 let model;
-let canvas;
-let ctx;
-let coord = { x: 0, y: 0 };
-let paint = false;
+var canvasWidth = 250;
+var canvasHeight = 250;
+var canvasStrokeStyle = "white";
+var canvasLineJoin = "round";
+var canvasLineWidth = 15;
+var canvasBackgroundColor = "black";
+var canvasId = "canvas";
 
-function getPosition(event) {
-    coord.x = event.clientX - canvas.getBoundingClientRect().left;
-    coord.y = event.clientY - canvas.getBoundingClientRect().top;
+var clickX = new Array();
+var clickY = new Array();
+var clickD = new Array();
+var drawing;
+
+document.getElementById('chart_box').innerHTML = "";
+document.getElementById('chart_box').style.display = "none";
+
+//---------------
+// Create canvas
+//---------------
+var canvasBox = document.getElementById('canvas_box');
+var canvas = document.createElement("canvas");
+
+canvas.setAttribute("width", canvasWidth);
+canvas.setAttribute("height", canvasHeight);
+canvas.setAttribute("id", canvasId);
+canvas.style.backgroundColor = canvasBackgroundColor;
+canvasBox.appendChild(canvas);
+if (typeof G_vmlCanvasManager != 'undefined') {
+    canvas = G_vmlCanvasManager.initElement(canvas);
 }
 
-function resizeCanvas() {
-    // Set a specific size for the canvas
-    canvas.width = 256;
-    canvas.height = 256;
+var ctx = canvas.getContext("2d");
+
+// Corrected event listeners for mouse and touch events
+canvas.addEventListener('mousedown', startDrawing);
+canvas.addEventListener('touchstart', startDrawing, { passive: false });
+
+canvas.addEventListener('mousemove', draw);
+canvas.addEventListener('touchmove', draw, { passive: false });
+
+canvas.addEventListener('mouseup', stopDrawing);
+canvas.addEventListener('mouseleave', stopDrawing);
+canvas.addEventListener('touchend', stopDrawing);
+
+function getMousePos(canvasDom, mouseEvent) {
+    var rect = canvasDom.getBoundingClientRect();
+    return {
+        x: mouseEvent.clientX - rect.left,
+        y: mouseEvent.clientY - rect.top
+    };
 }
 
-function startPainting(event) {
-    paint = true;
-    getPosition(event);
+function getTouchPos(canvasDom, touchEvent) {
+    var rect = canvasDom.getBoundingClientRect();
+    return {
+        x: touchEvent.touches[0].clientX - rect.left,
+        y: touchEvent.touches[0].clientY - rect.top
+    };
 }
 
-function stopPainting() {
-    paint = false;
+function startDrawing(event) {
+    drawing = true;
+    var pos = (event.type === 'touchstart') ? getTouchPos(canvas, event) : getMousePos(canvas, event);
+    addUserGesture(pos.x, pos.y);
+    drawOnCanvas();
+    if (event.type.startsWith('touch')) {
+        event.preventDefault();
+    }
 }
 
-function sketch(event) {
-    if (!paint) return;
-    ctx.beginPath();
-    
-    // Adjust lineWidth to cover the canvas sufficiently for a 28x28 pixel image
-    ctx.lineWidth = canvas.width / 20;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = 'black';
-    
-    ctx.moveTo(coord.x, coord.y);
-    getPosition(event);
-    ctx.lineTo(coord.x, coord.y);
-    ctx.stroke();
+function draw(event) {
+    if (!drawing) return;
+    var pos = (event.type === 'touchmove') ? getTouchPos(canvas, event) : getMousePos(canvas, event);
+    addUserGesture(pos.x, pos.y, true);
+    drawOnCanvas();
+    if (event.type.startsWith('touch')) {
+        event.preventDefault();
+    }
 }
 
-function clearCanvas() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+// Stop Drawing
+function stopDrawing(event) {
+    if (!drawing) return;
+    drawing = false;
+    if (event.type === 'mouseup' || event.type === 'mouseleave') {
+        performPrediction();
+    } else if (event.type === 'touchend') {
+        performPrediction();
+    }
 }
 
-async function logPrediction() {
-      
-    // Create a temporary canvas to resize the image
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = 28;
-    tempCanvas.height = 28;
-    const tempCtx = tempCanvas.getContext('2d');
+// Perform Prediction
+function performPrediction() {
+    // Prediction logic moved here
+    var imageData = canvas.toDataURL();
+    let tensor = preprocessCanvas(canvas);
+    model.predict(tensor).data().then(function(predictions) {
+        let results = Array.from(predictions);
+        displayChart(results);
+        displayLabel(results);
+        console.log(results);
+    });
+}
 
-    // Draw the image into the temporary canvas, resizing it in the process
-    tempCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, 28, 28);
+// Add User Gesture
+function addUserGesture(x, y, dragging) {
+    clickX.push(x);
+    clickY.push(y);
+    clickD.push(dragging);
+}
 
-    // Get the image data from the temporary canvas
-    const resizedImageData = tempCtx.getImageData(0, 0, 28, 28);
+// Draw on Canvas
+function drawOnCanvas() {
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.strokeStyle = canvasStrokeStyle;
+    ctx.lineJoin = canvasLineJoin;
+    ctx.lineWidth = canvasLineWidth;
 
-    // Darken non-zero pixels
-    for (let i = 0; i < resizedImageData.data.length; i += 4) {
-        // Check if the pixel is not white (assuming the drawing is black on white)
-        if (resizedImageData.data[i] < 255 || resizedImageData.data[i + 1] < 255 || resizedImageData.data[i + 2] < 255) {
-            // Reduce the RGB values to darken the pixel; the alpha channel is at i+3 and should be left as is
-            resizedImageData.data[i] *= 0.7; // R
-            resizedImageData.data[i + 1] *= 0.7; // G
-            resizedImageData.data[i + 2] *= 0.7; // B
+    for (var i = 0; i < clickX.length; i++) {
+        ctx.beginPath();
+        if (clickD[i] && i) {
+            ctx.moveTo(clickX[i - 1], clickY[i - 1]);
+        } else {
+            ctx.moveTo(clickX[i] - 1, clickY[i]);
+        }
+        ctx.lineTo(clickX[i], clickY[i]);
+        ctx.closePath();
+        ctx.stroke();
+    }
+}
+
+// Clear Canvas
+$("#clear-button").click(function () {
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    clickX = [];
+    clickY = [];
+    clickD = [];
+    $(".prediction-text").empty();
+    // Reset chart data
+    if (chart) {
+        chart.data.datasets.forEach((dataset) => {
+            dataset.data = Array(chart.data.labels.length).fill(0);
+        });
+        chart.update();
+    }
+});
+
+// Load Model
+async function loadModel() {
+    console.log("model loading..");
+    model = undefined;
+    model = await tf.loadLayersModel("files/model.json");
+    console.log("model loaded..");
+    loadChart(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], Array(10).fill(0), "CNN");
+    displayChart(Array(10).fill(0));
+}
+
+// Preprocess Canvas
+function preprocessCanvas(image) {
+    let tensor = tf.browser.fromPixels(image)
+        .resizeNearestNeighbor([28, 28])
+        .mean(2)
+        .expandDims(2)
+        .expandDims()
+        .toFloat();
+    console.log(tensor.shape);
+    return tensor.div(255.0);
+}
+
+// Chart to Display Predictions
+var chart = "";
+function loadChart(label, data, modelSelected) {
+    var ctx = document.getElementById('chart_box').getContext('2d');
+    if (chart) {
+        chart.destroy();
+    }
+    chart = new Chart(ctx, {
+        // Chart configuration...
+    });
+}
+
+
+//----------------------------
+// display chart with updated
+// drawing from canvas
+//----------------------------
+function displayChart(data) {
+    var ctx = document.getElementById('chart_box').getContext('2d');
+    if (chart) {
+        chart.destroy(); // Destroy the existing chart instance before creating a new one
+    }
+    chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], // The labels for each bar
+            datasets: [{
+                label: "CNN prediction",
+                backgroundColor: '#744167',
+                borderColor: 'rgb(255, 99, 132)',
+                data: data, // The data array from your prediction results
+            }]
+        },
+        options: {
+            animation: {
+                duration: 1000, // Duration of the animation in milliseconds
+                easing: 'easeOutBounce', // The easing function of the animation
+                onComplete: function () {
+                    console.log('Animation completed!');
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+
+            },
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+
+    // Make the chart container visible
+    document.getElementById('chart_box').style.display = 'block';
+}
+
+
+function displayLabel(data) {
+    var max = data[0];
+    var maxIndex = 0;
+
+    for (var i = 1; i < data.length; i++) {
+        if (data[i] > max) {
+            maxIndex = i;
+            max = data[i];
         }
     }
-
-    // Draw the darkened image onto the preview canvas for visualization
-    const previewCanvas = document.getElementById('previewCanvas');
-    const previewCtx = previewCanvas.getContext('2d');
-
-    // Clear previous preview
-    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
-
-    // Put the darkened image data into the preview canvas
-    previewCtx.putImageData(resizedImageData, 0, 0);
-
-    // Get the image data from the original canvas
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-    // Convert the ImageData to a tensor
-    const inputTensor = tf
-    
-    // Log the inputTensor data for debugging
-    let inputTensorData = await inputTensor.data();
-    console.log('Input Tensor Data:', Array.from(inputTensorData));
-
-    // Normalize the tensor to have values between 0 and 1
-    const normalizedTensor = inputTensor.toFloat().div(tf.scalar(255));
-    
-    // Log the normalizedTensor data for debugging
-    let normalizedTensorData = await normalizedTensor.data();
-    console.log('Normalized Tensor Data:', Array.from(normalizedTensorData));
-
-    // Add a batch dimension with `expandDims` because the model expects a 4D tensor
-    const batchedTensor = normalizedTensor.expandDims(0);
-
-    // Now you can pass the tensor into your model
-    const prediction = await model.predict(batchedTensor);
-
-    // Get the data from the tensor
-    const predictionData = await prediction.data();
-
-    // Log the prediction data to the console
-    console.log('Prediction Data:', predictionData);
-
-    // Dispose of the tensors to free up GPU memory
-    inputTensor.dispose();
-    normalizedTensor.dispose();
-    batchedTensor.dispose();
+    $(".prediction-text").html("Predicting you draw <b>" + maxIndex + "</b> with <b>" + Math.trunc(max * 100) + "%</b> confidence")
 }
 
-
-
-
-async function loadModel() {
-    // Load the model from the correct path
-    model = await tf.loadLayersModel('files/model.json');
-    console.log('Model loaded successfully');
+// Function to set canvas size based on screen width
+function setCanvasSize() {
+    if (window.innerWidth > 600) { // Adjust this value based on your needs
+        canvasWidth = 400;
+        canvasHeight = 400;
+    } else {
+        canvasWidth = 240; // Default size for narrow screens
+        canvasHeight = 240;
+    }
+    canvas.setAttribute("width", canvasWidth);
+    canvas.setAttribute("height", canvasHeight);
 }
 
-// Ensure the DOM is fully loaded before running the script
-document.addEventListener('DOMContentLoaded', () => {
-    canvas = document.getElementById('canvas');
-    ctx = canvas.getContext('2d');
-    resizeCanvas();
+// Call setCanvasSize on window load and resize
+window.onload = setCanvasSize;
+window.onresize = setCanvasSize;
 
-    document.getElementById('clear-button').addEventListener('click', clearCanvas);
-    document.getElementById('predict-button').addEventListener('click', logPrediction);
-    canvas.addEventListener('mousedown', startPainting);
-    canvas.addEventListener('mouseup', stopPainting);
-    canvas.addEventListener('mousemove', sketch);
 
-    loadModel(); // Load the TensorFlow.js model
-});
+
+loadModel();

@@ -2,34 +2,19 @@
 <html>
 
 <head>
-    <meta charset="UTF-8" />
-    <title>About</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <link rel="stylesheet" href="css/carousel_styles.css">
-    <script src="js/carousel.js"></script>
-    <script src="js/ai_demo.js"></script>
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
-    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <meta charset='utf-8'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <title>AI Demo</title>
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="css/ai_demo.css">
     <link rel="stylesheet" href="css/about_styles.css" />
-    <link rel="stylesheet" href="css/header_styles.css" />
+    <link rel="stylesheet" href="css/header_styles.css">
+    <script src="js/carousel.js"></script>
     <link rel="icon" type="image/x-icon" href="/images/favicons/favicon.ico">
-    <style>
-        * {
-        	overflow: hidden;
-        }
-        body {
-        	text-align: center;
-        }
-        h1 {
-        	color: green;
-        }
-    </style>
 </head>
 
 <nav>
@@ -51,24 +36,19 @@
 </nav>
 
 <body>
+    <h2 style="text-align: center; margin-top: 10px;">Digit Detector</h2>
+    <div class="container" id="canvas-container">
+        <p>Directions: Draw any number in the black box and the predicted number will show up below!</p>
+        <div id="canvas_box" class="canvas-box"></div>
+        <button id="clear-button" class="btn btn-dark">Clear</button>
 
-    <h4 style="text-align: center; margin-top: 10px;">This page will have a cool AI demo soon</h4>
-    
-    <!-- Canvas setup -->
-    <div style="display: flex; justify-content: center; margin-top: 20px;">
-        <canvas id="canvas" width="256" height="256" style="border:1px solid #000000;"></canvas>
+        <div id="result_box">
+            <canvas id="chart_box" />
+        </div>
+        <div class="prediction-text" />
+        <br/>
     </div>
-    <!-- Preprocessed canvas for preview -->
-    <div style="display: flex; justify-content: center; margin-top: 20px;">
-        <canvas id="previewCanvas" width="28" height="28" style="border:1px solid #000000; image-rendering: pixelated; width: 140px; height: 140px;"></canvas>
-    </div>
-    
-    <!-- Buttons for user interaction -->
-    <div style="text-align: center; margin-top: 20px;">
-        <button id="clear-button">Clear Canvas</button>
-        <button id="predict-button">Predict</button>
-    </div>
-    
+    <script src="js/ai_demo.js"></script>
 </body>
 
 </html>
