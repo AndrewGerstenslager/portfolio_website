@@ -50,17 +50,17 @@
 }
 
 .skill-per.bachelors {
-    width: 90%;
+    width: 100%;
     animation-delay: 0.1s;
 }
 
 .skill-per.finance_minor {
-    width: 89%;
+    width: 100%;
     animation-delay: 0.2s;
 }
 
 .skill-per.masters_cs {
-    width: 36%;
+    width: 85%;
     animation-delay: 0.3s;
 }
 
