@@ -1,77 +1,127 @@
 <!DOCTYPE html>
-<html lang="en"> <!-- Consider adding the lang attribute for accessibility -->
-
+<html lang="en">
 <head>
-    <title>Andrew's Website</title>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-    
-    <link rel="icon" type="image/x-icon" href="/images/favicons/favicon.ico">
-    <link rel="stylesheet" href="css/index_styles.css">
-    <link rel="stylesheet" href="css/header_styles.css">
+    <title>Portfolio - Globe</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Departure+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
 </head>
-
-<nav>
-    <div class="logo">
-        <a href="index.html">
-            <img src="images/logos_internal/logo-nobg.png" class="logo" />
-        </a>
-    </div>
-    <div class="menu-toggle" id="mobile-menu">
-        <span class="bar"></span>
-        <span class="bar"></span>
-        <span class="bar"></span>
-    </div>
-    <ul class="nav-list">
-        <li class="nav-item"><a href="about.html">About</a></li>
-        <li class="nav-item"><a href="portfolio.html">Portfolio</a></li>
-        <li class="nav-item"><a href="ai_demo.html">AI Demo</a></li>
-    </ul>
-</nav>
-
 <body>
-    <div class="MainPage">
-        <div class="details">
-            <h1>Hi I'm <span style="color:blue">Andrew</span></h1>
-            <h1><span style="color:blue">Gerstenslager</span></h1>
-            <div class="stack" style="--stacks: 3;">
-                <span style="--index: 0;">Computer Engineer</span>
-                <span style="--index: 1;">Computer Engineer</span>
-                <span style="--index: 2;">Computer Engineer</span>
-            </div>
-            </br>
-            <p>This is my personal website where I post
-                <br />my hobbies, projects, and relevant info.
-            </p>
-            <div class=miscContainer>
-                <div class="downloadButton">
-                    <a href="files/Andrew Gerstenslager Resume.pdf" target="_blank">VIEW MY RESUME</a>
+    <div class="globe-container" id="globe-container">
+        <canvas id="globe-canvas"></canvas>
+        <svg id="ui-overlay" class="ui-overlay" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice">
+            <!-- Name with decorative lines -->
+            <g id="name-display" class="name-display">
+                <!-- Name text -->
+                <text x="500" y="262" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="16" text-anchor="middle" opacity="0.8">ANDREW GERSTENSLAGER</text>
 
-                </div>
+                <!-- Left side lines (5 lines) -->
+                <line x1="245" y1="250" x2="245" y2="268" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="265" y1="252" x2="265" y2="266" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="285" y1="253" x2="285" y2="265" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="305" y1="254" x2="305" y2="264" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="325" y1="255" x2="325" y2="263" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
 
-                <a href="https://github.com/AndrewGerstenslager">
-                    <img src="images/logos_external/github-logo.png">
-                </a>
-                <a href="https://www.facebook.com/andrew.gerstenslager">
-                    <img src="images/logos_external/facebook-logo.png">
-                </a>
-                <a href="https://www.linkedin.com/in/andrew-gerstenslager/">
-                    <img src="images/logos_external/linkedin-logo.png">
-                </a>
-                <a href="https://www.instagram.com/andrew_gerstenslager/">
-                    <img src="images/logos_external/instagram-logo.png">
-                </a>
-            </div>
+                <!-- Right side lines (5 lines) -->
+                <line x1="675" y1="255" x2="675" y2="263" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="695" y1="254" x2="695" y2="264" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="715" y1="253" x2="715" y2="265" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="735" y1="252" x2="735" y2="266" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="755" y1="250" x2="755" y2="268" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+            </g>
 
+            <!-- Thick rectangular border frame -->
+            <rect x="275" y="275" width="450" height="450" fill="none" stroke="#FFA234" stroke-width="6" opacity="0.4"/>
+            <rect x="282" y="282" width="436" height="436" fill="none" stroke="#FFA234" stroke-width="1" opacity="0.3"/>
 
-        </div>
+            <!-- Center reticle circle with directional lines (larger than sphere) -->
+            <g id="center-reticle" class="center-reticle">
+                <circle cx="500" cy="500" r="150" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <!-- N/E/S/W lines -->
+                <line x1="500" y1="350" x2="500" y2="320" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="650" y1="500" x2="680" y2="500" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="500" y1="650" x2="500" y2="680" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="350" y1="500" x2="320" y2="500" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <!-- Diagonal lines -->
+                <line x1="606" y1="394" x2="628" y2="372" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="606" y1="606" x2="628" y2="628" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="394" y1="606" x2="372" y2="628" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="394" y1="394" x2="372" y2="372" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+            </g>
+
+            <!-- Side indicators (inverted) -->
+            <g id="side-indicators" class="side-indicators">
+                <!-- Left indicator (now points outward) -->
+                <g class="left-indicator">
+                    <line x1="330" y1="400" x2="330" y2="460" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
+                    <line x1="330" y1="460" x2="345" y2="500" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
+                    <line x1="345" y1="500" x2="330" y2="540" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
+                    <line x1="330" y1="540" x2="330" y2="600" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
+                    <!-- Angled end segments pointing outward -->
+                    <line x1="330" y1="400" x2="318" y2="388" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
+                    <line x1="330" y1="600" x2="318" y2="612" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
+                </g>
+
+                <!-- Right indicator (now points outward) -->
+                <g class="right-indicator">
+                    <line x1="670" y1="400" x2="670" y2="460" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
+                    <line x1="670" y1="460" x2="655" y2="500" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
+                    <line x1="655" y1="500" x2="670" y2="540" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
+                    <line x1="670" y1="540" x2="670" y2="600" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
+                    <!-- Angled end segments pointing outward -->
+                    <line x1="670" y1="400" x2="682" y2="388" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
+                    <line x1="670" y1="600" x2="682" y2="612" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
+                </g>
+            </g>
+
+            <!-- Zoom indicator with full box -->
+            <g id="zoom-indicator" class="zoom-indicator">
+                <!-- Top left - all 4 corners -->
+                <g class="zoom-display">
+                    <!-- Top left corner -->
+                    <path d="M 295 305 L 295 290 L 310 290" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                    <!-- Top right corner -->
+                    <path d="M 420 290 L 435 290 L 435 305" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                    <!-- Bottom left corner -->
+                    <path d="M 295 340 L 295 355 L 310 355" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                    <!-- Bottom right corner -->
+                    <path d="M 435 340 L 435 355 L 420 355" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+
+                    <!-- ZOOM label and value (aligned) -->
+                    <text x="305" y="305" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="11" opacity="0.7">ZOOM</text>
+                    <text id="zoom-value" x="305" y="340" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="20" text-anchor="start" opacity="0.9">9.0</text>
+                </g>
+            </g>
+
+            <!-- Velocity indicator -->
+            <g id="velocity-indicator" class="velocity-indicator">
+                <!-- Bottom right - velocity bar -->
+                <g class="velocity-display">
+                    <!-- Smaller corners for velocity box -->
+                    <path d="M 585 655 L 585 643 L 597 643" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                    <path d="M 703 643 L 715 643 L 715 655" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                    <path d="M 585 695 L 585 707 L 597 707" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                    <path d="M 715 695 L 715 707 L 703 707" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+
+                    <!-- VELOCITY label -->
+                    <text x="595" y="651" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="10" opacity="0.7">VELOCITY</text>
+
+                    <!-- Velocity bar background -->
+                    <rect x="595" y="663" width="110" height="8" fill="none" stroke="#FFA234" stroke-width="1" opacity="0.3"/>
+                    <!-- Velocity bar fill (smooth transition via CSS) -->
+                    <rect id="velocity-bar-fill" class="velocity-bar-fill" x="595" y="663" width="0" height="8" fill="#FFA234" opacity="0.6"/>
+
+                    <!-- Velocity value text -->
+                    <text id="velocity-value" x="650" y="693" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="14" text-anchor="middle" opacity="0.8">0.00</text>
+                </g>
+            </g>
+        </svg>
     </div>
 
-    <img src="images/portrait.jpg" class="portrait" />
-    <script src="js/menuToggle.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="globe.js"></script>
 </body>
-
 </html>
