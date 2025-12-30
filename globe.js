@@ -1251,6 +1251,39 @@ class WireframeGlobe {
         this.savedZoom = this.camera.position.z; // Save current zoom to return to
         this.targetZoom = 0.75; // Zoom to size 0.75
 
+        // Create/show "COMING SOON!" text in center
+        const svg = document.getElementById('ui-overlay');
+        let comingSoonText = document.getElementById('coming-soon-text');
+        if (!comingSoonText && svg) {
+            // Create text element if it doesn't exist
+            comingSoonText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            comingSoonText.setAttribute('id', 'coming-soon-text');
+            comingSoonText.setAttribute('x', '500');
+            comingSoonText.setAttribute('y', '480');
+            comingSoonText.setAttribute('fill', '#FFA234');
+            comingSoonText.setAttribute('font-family', "'Departure Mono', monospace");
+            comingSoonText.setAttribute('font-size', '48');
+            comingSoonText.setAttribute('font-weight', 'bold');
+            comingSoonText.setAttribute('text-anchor', 'middle');
+            comingSoonText.setAttribute('opacity', '0.9');
+
+            // Create two tspan elements for two lines
+            const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+            line1.setAttribute('x', '500');
+            line1.setAttribute('dy', '0');
+            line1.textContent = 'COMING';
+
+            const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+            line2.setAttribute('x', '500');
+            line2.setAttribute('dy', '60');
+            line2.textContent = 'SOON!';
+
+            comingSoonText.appendChild(line1);
+            comingSoonText.appendChild(line2);
+            svg.appendChild(comingSoonText);
+        }
+        if (comingSoonText) comingSoonText.style.display = 'block';
+
         // Hide UI elements
         const navButtons = document.getElementById('nav-buttons');
         const nameDisplay = document.getElementById('name-display');
@@ -1283,6 +1316,10 @@ class WireframeGlobe {
         this.rotationEnabled = true;
         this.userInteractionEnabled = true; // Re-enable user input
         this.targetZoom = this.savedZoom || this.baseCameraDistance; // Return to saved zoom or base
+
+        // Hide "COMING SOON!" text
+        const comingSoonText = document.getElementById('coming-soon-text');
+        if (comingSoonText) comingSoonText.style.display = 'none';
 
         // Show UI elements
         const navButtons = document.getElementById('nav-buttons');
