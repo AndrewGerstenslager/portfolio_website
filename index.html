@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portfolio - Globe</title>
+    <link rel="icon" type="image/x-icon" href="assets/favicon/AG_Favicon.ico">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Departure+Mono&display=swap" rel="stylesheet">
@@ -41,15 +42,15 @@
             <g id="center-reticle" class="center-reticle">
                 <circle cx="500" cy="500" r="150" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                 <!-- N/E/S/W lines -->
-                <line x1="500" y1="350" x2="500" y2="320" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="650" y1="500" x2="680" y2="500" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="500" y1="650" x2="500" y2="680" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="350" y1="500" x2="320" y2="500" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="500" y1="350" x2="500" y2="335" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="650" y1="500" x2="665" y2="500" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="500" y1="650" x2="500" y2="665" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="350" y1="500" x2="335" y2="500" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                 <!-- Diagonal lines -->
-                <line x1="606" y1="394" x2="628" y2="372" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="606" y1="606" x2="628" y2="628" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="394" y1="606" x2="372" y2="628" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="394" y1="394" x2="372" y2="372" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="606" y1="394" x2="617" y2="383" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="606" y1="606" x2="617" y2="617" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="394" y1="606" x2="383" y2="617" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <line x1="394" y1="394" x2="383" y2="383" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
             </g>
 
             <!-- Side indicators (inverted) -->
@@ -90,33 +91,68 @@
                     <!-- Bottom right corner -->
                     <path d="M 435 340 L 435 355 L 420 355" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
 
-                    <!-- ZOOM label and value (aligned) -->
-                    <text x="305" y="305" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="11" opacity="0.7">ZOOM</text>
-                    <text id="zoom-value" x="305" y="340" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="20" text-anchor="start" opacity="0.9">9.0</text>
+                    <!-- ZOOM label -->
+                    <text x="365" y="305" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="11" text-anchor="middle" opacity="0.7">ZOOM</text>
+
+                    <!-- Zoom slider bar (orange track) -->
+                    <rect x="305" y="322" width="120" height="8" fill="none" stroke="#FFA234" stroke-width="1" opacity="0.3"/>
+                    <rect id="zoom-bar-fill" x="305" y="322" width="60" height="8" fill="#FFA234" opacity="0.6"/>
+
+                    <!-- Zoom slider handle (white draggable rectangle) -->
+                    <rect id="zoom-slider-handle" class="zoom-slider-handle" x="360" y="318" width="10" height="16" fill="#FFFFFF" opacity="0.9" style="cursor: grab;"/>
+                    <!-- Larger invisible touch area for mobile -->
+                    <rect id="zoom-slider-touch-area" class="zoom-slider-touch-area" x="360" y="290" width="10" height="65" fill="transparent" opacity="0" style="cursor: grab; pointer-events: none;"/>
                 </g>
             </g>
 
             <!-- Velocity indicator -->
             <g id="velocity-indicator" class="velocity-indicator">
-                <!-- Bottom right - velocity bar -->
+                <!-- Top right - velocity bar -->
                 <g class="velocity-display">
-                    <!-- Smaller corners for velocity box -->
-                    <path d="M 585 655 L 585 643 L 597 643" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                    <path d="M 703 643 L 715 643 L 715 655" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                    <path d="M 585 695 L 585 707 L 597 707" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                    <path d="M 715 695 L 715 707 L 703 707" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                    <!-- Corners for velocity box (top right position) -->
+                    <path d="M 565 305 L 565 290 L 580 290" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                    <path d="M 690 290 L 705 290 L 705 305" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                    <path d="M 565 340 L 565 355 L 580 355" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                    <path d="M 705 340 L 705 355 L 690 355" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
 
                     <!-- VELOCITY label -->
-                    <text x="595" y="651" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="10" opacity="0.7">VELOCITY</text>
+                    <text x="635" y="305" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="10" text-anchor="middle" opacity="0.7">VELOCITY</text>
 
                     <!-- Velocity bar background -->
-                    <rect x="595" y="663" width="110" height="8" fill="none" stroke="#FFA234" stroke-width="1" opacity="0.3"/>
+                    <rect x="580" y="317" width="110" height="8" fill="none" stroke="#FFA234" stroke-width="1" opacity="0.3"/>
                     <!-- Velocity bar fill (smooth transition via CSS) -->
-                    <rect id="velocity-bar-fill" class="velocity-bar-fill" x="595" y="663" width="0" height="8" fill="#FFA234" opacity="0.6"/>
+                    <rect id="velocity-bar-fill" class="velocity-bar-fill" x="580" y="317" width="0" height="8" fill="#FFA234" opacity="0.6"/>
 
                     <!-- Velocity value text -->
-                    <text id="velocity-value" x="650" y="693" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="14" text-anchor="middle" opacity="0.8">0.00</text>
+                    <text id="velocity-value" x="635" y="345" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="14" text-anchor="middle" opacity="0.8">0.00</text>
                 </g>
+            </g>
+
+            <!-- Bottom navigation buttons -->
+            <g id="nav-buttons" class="nav-buttons">
+                <!-- About Me button -->
+                <g class="nav-button" id="about-btn">
+                    <rect x="290" y="665" width="120" height="40" fill="none" stroke="#FFA234" stroke-width="2" opacity="0.6"/>
+                    <text x="350" y="690" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="12" text-anchor="middle" opacity="0.9">ABOUT ME</text>
+                </g>
+
+                <!-- Portfolio button -->
+                <g class="nav-button" id="portfolio-btn">
+                    <rect x="440" y="665" width="120" height="40" fill="none" stroke="#FFA234" stroke-width="2" opacity="0.6"/>
+                    <text x="500" y="690" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="12" text-anchor="middle" opacity="0.9">PORTFOLIO</text>
+                </g>
+
+                <!-- Demos button -->
+                <g class="nav-button" id="demos-btn">
+                    <rect x="590" y="665" width="120" height="40" fill="none" stroke="#FFA234" stroke-width="2" opacity="0.6"/>
+                    <text x="650" y="690" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="12" text-anchor="middle" opacity="0.9">DEMOS</text>
+                </g>
+            </g>
+
+            <!-- Return button (hidden by default) -->
+            <g id="return-btn" class="return-button" style="display: none;">
+                <rect x="430" y="665" width="140" height="40" fill="none" stroke="#FFA234" stroke-width="2" opacity="0.6"/>
+                <text x="500" y="690" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="12" text-anchor="middle" opacity="0.9">RETURN</text>
             </g>
         </svg>
     </div>

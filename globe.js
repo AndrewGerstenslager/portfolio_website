@@ -15,9 +15,10 @@ class WireframeGlobe {
 
         // Responsive camera distance - scale based on viewport width
         // Desktop (>768px): base distance, Mobile: further away
-        this.baseCameraDistance = 9;
-        this.updateCameraForViewport();
-        this.camera.position.z = this.baseCameraDistance;
+        this.initialCameraDistance = 5.0;
+        this.initialMinZoom = 5.0;  // Must be <= initialCameraDistance
+        this.initialMaxZoom = 15;
+        this.updateCameraForViewport(); // This sets baseCameraDistance, minZoom, maxZoom, and camera.position.z
         
         // Renderer setup
         this.renderer = new THREE.WebGLRenderer({
@@ -45,12 +46,19 @@ class WireframeGlobe {
         // Time tracking
         this.lastTime = Date.now();
 
-        // Zoom bounds (will be scaled by viewport)
-        this.minZoom = 6.0;
-        this.maxZoom = 12;
-        
+        // Zoom bounds (will be scaled by viewport in updateCameraForViewport)
+
+        // View mode state
+        this.isViewMode = false;
+        this.rotationEnabled = true;
+        this.userInteractionEnabled = true; // Separate flag for user input
+        this.targetZoom = null;
+        this.zoomSpeed = 0.15; // Increased for faster animation
+
         // Controls
         this.setupControls();
+        this.setupNavigationButtons();
+        this.setupZoomSlider();
         
         // Animation
         this.animate();
@@ -468,6 +476,7 @@ class WireframeGlobe {
         
         // Listen on both canvas and container to catch all interactions
         const handleMouseDown = (e) => {
+            if (!this.userInteractionEnabled) return; // Don't allow interaction if user input disabled
             this.isInteracting = true;
             this.canvas.style.cursor = 'grabbing';
             previousMousePosition = {
@@ -548,6 +557,7 @@ class WireframeGlobe {
         };
         
         const handleTouchStart = (e) => {
+            if (!this.userInteractionEnabled) return; // Don't allow interaction if user input disabled
             e.preventDefault();
             this.isInteracting = true;
             
@@ -601,11 +611,12 @@ class WireframeGlobe {
                 };
             } else if (e.touches.length === 2 && initialPinchDistance !== null) {
                 // Two touches - pinch to zoom
+                this.targetZoom = null; // Cancel any zoom animation
                 const currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
                 const distanceDelta = initialPinchDistance - currentDistance;
 
                 // Zoom speed factor (positive delta = pinch in = zoom in)
-                const zoomSpeed = 0.01;
+                const zoomSpeed = 0.09; // 9x faster than original
                 const newZ = this.camera.position.z + (distanceDelta * zoomSpeed);
                 this.camera.position.z = Math.max(this.minZoom, Math.min(this.maxZoom, newZ));
 
@@ -646,7 +657,9 @@ class WireframeGlobe {
         
         // Zoom with scroll
         this.canvas.addEventListener('wheel', (e) => {
+            if (!this.userInteractionEnabled) return; // Don't allow zoom if user input disabled
             e.preventDefault();
+            this.targetZoom = null; // Cancel any zoom animation
             const zoomSpeed = 0.1;
             const newZ = this.camera.position.z + (e.deltaY > 0 ? zoomSpeed : -zoomSpeed);
             this.camera.position.z = Math.max(this.minZoom, Math.min(this.maxZoom, newZ));
@@ -684,8 +697,19 @@ class WireframeGlobe {
             this.updateFlyingTriangles(deltaTime);
         }
 
-        // Apply momentum when not interacting
-        if (!this.isInteracting) {
+        // Smooth zoom animation
+        if (this.targetZoom !== null) {
+            const diff = this.targetZoom - this.camera.position.z;
+            if (Math.abs(diff) > 0.01) {
+                this.camera.position.z += diff * this.zoomSpeed;
+            } else {
+                this.camera.position.z = this.targetZoom;
+                this.targetZoom = null; // Animation complete
+            }
+        }
+
+        // Apply momentum when not interacting (only if rotation is enabled)
+        if (!this.isInteracting && this.rotationEnabled) {
             const velocityMagnitude = this.rotationVelocity.length();
 
             if (velocityMagnitude > 0.00001) {
@@ -716,11 +740,8 @@ class WireframeGlobe {
     }
     
     updateUIZoom() {
-        const zoomValue = document.getElementById('zoom-value');
-
-        if (zoomValue) {
-            zoomValue.textContent = this.camera.position.z.toFixed(1);
-        }
+        // Update slider position to reflect current zoom
+        this.updateSliderPosition();
     }
 
     updateUIVelocity() {
@@ -744,6 +765,260 @@ class WireframeGlobe {
         }
     }
 
+    setupNavigationButtons() {
+        // About Me button
+        const aboutBtn = document.getElementById('about-btn');
+        if (aboutBtn) {
+            const enterView = () => this.enterViewMode();
+            aboutBtn.addEventListener('click', enterView);
+            aboutBtn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                enterView();
+            });
+        }
+
+        // Portfolio button
+        const portfolioBtn = document.getElementById('portfolio-btn');
+        if (portfolioBtn) {
+            const portfolioAction = () => {
+                console.log('Portfolio clicked');
+                // TODO: Portfolio view
+            };
+            portfolioBtn.addEventListener('click', portfolioAction);
+            portfolioBtn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                portfolioAction();
+            });
+        }
+
+        // Demos button
+        const demosBtn = document.getElementById('demos-btn');
+        if (demosBtn) {
+            const demosAction = () => {
+                console.log('Demos clicked');
+                // TODO: Demos view
+            };
+            demosBtn.addEventListener('click', demosAction);
+            demosBtn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                demosAction();
+            });
+        }
+
+        // Return button
+        const returnBtn = document.getElementById('return-btn');
+        if (returnBtn) {
+            const exitView = () => this.exitViewMode();
+            returnBtn.addEventListener('click', exitView);
+            returnBtn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                exitView();
+            });
+        }
+    }
+
+    setupZoomSlider() {
+        const sliderHandle = document.getElementById('zoom-slider-handle');
+        const sliderBar = document.getElementById('zoom-bar-fill');
+        const touchArea = document.getElementById('zoom-slider-touch-area');
+        if (!sliderHandle || !sliderBar) return;
+
+        // Detect mobile and enable larger touch area
+        const isMobile = window.innerWidth < 768;
+        if (isMobile && touchArea) {
+            touchArea.style.pointerEvents = 'all'; // Enable touch area on mobile
+            touchArea.setAttribute('width', '30'); // Wider touch area
+        }
+
+        let isDragging = false;
+        const sliderMinX = 305; // Left edge of slider track
+        const sliderMaxX = 425; // Right edge of slider track (305 + 120)
+        const sliderTrackWidth = sliderMaxX - sliderMinX;
+        const handleWidth = 10; // Visual handle width stays constant
+
+        const updateZoomFromSlider = (clientX) => {
+            this.targetZoom = null; // Cancel any zoom animation
+
+            // Get SVG coordinates
+            const svg = document.getElementById('ui-overlay');
+            const pt = svg.createSVGPoint();
+            pt.x = clientX;
+            pt.y = 0;
+            const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+            // Clamp to slider bounds
+            let newX = Math.max(sliderMinX, Math.min(sliderMaxX, svgP.x));
+
+            // Calculate position as percentage (0 to 1)
+            const percent = (newX - sliderMinX) / sliderTrackWidth;
+
+            // Map to zoom range (minZoom to maxZoom)
+            const newZoom = this.minZoom + percent * (this.maxZoom - this.minZoom);
+            this.camera.position.z = newZoom;
+
+            // Update slider position
+            this.updateSliderPosition();
+        };
+
+        const handleMouseDown = (e) => {
+            if (!this.userInteractionEnabled) return; // Respect interaction lock
+            e.preventDefault();
+            e.stopPropagation(); // Prevent globe rotation
+            isDragging = true;
+            sliderHandle.style.cursor = 'grabbing';
+            updateZoomFromSlider(e.clientX);
+        };
+
+        const handleMouseMove = (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            e.stopPropagation(); // Prevent globe rotation
+            updateZoomFromSlider(e.clientX);
+        };
+
+        const handleMouseUp = () => {
+            isDragging = false;
+            sliderHandle.style.cursor = 'grab';
+        };
+
+        // Mouse events (on both handle and touch area)
+        sliderHandle.addEventListener('mousedown', handleMouseDown);
+        if (touchArea) touchArea.addEventListener('mousedown', handleMouseDown);
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+
+        // Touch events (on both handle and touch area)
+        const handleTouchStart = (e) => {
+            if (!this.userInteractionEnabled) return; // Respect interaction lock
+            e.preventDefault();
+            e.stopPropagation();
+            isDragging = true;
+            if (e.touches.length > 0) {
+                updateZoomFromSlider(e.touches[0].clientX);
+            }
+        };
+
+        sliderHandle.addEventListener('touchstart', handleTouchStart);
+        if (touchArea) touchArea.addEventListener('touchstart', handleTouchStart);
+
+        document.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.touches.length > 0) {
+                updateZoomFromSlider(e.touches[0].clientX);
+            }
+        });
+
+        document.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+
+        // Store isDragging state for use in other methods
+        this.isSliderDragging = () => isDragging;
+    }
+
+    updateSliderPosition() {
+        const sliderHandle = document.getElementById('zoom-slider-handle');
+        const sliderBar = document.getElementById('zoom-bar-fill');
+        const touchArea = document.getElementById('zoom-slider-touch-area');
+        if (!sliderHandle || !sliderBar) return;
+
+        const sliderMinX = 305;
+        const sliderMaxX = 425;
+        const sliderTrackWidth = sliderMaxX - sliderMinX;
+
+        // Handle width (visual size)
+        const handleWidth = 10;
+
+        // Calculate position based on current zoom
+        const zoomRange = this.maxZoom - this.minZoom;
+        const zoomPercent = (this.camera.position.z - this.minZoom) / zoomRange;
+        const clampedPercent = Math.max(0, Math.min(1, zoomPercent));
+
+        // Update handle position (centered on the track)
+        const handleX = sliderMinX + (clampedPercent * sliderTrackWidth) - (handleWidth / 2);
+        sliderHandle.setAttribute('x', handleX.toFixed(1));
+
+        // Update touch area position (if it exists, center it on the handle)
+        if (touchArea) {
+            const touchWidth = parseFloat(touchArea.getAttribute('width')) || 10;
+            const touchX = sliderMinX + (clampedPercent * sliderTrackWidth) - (touchWidth / 2);
+            touchArea.setAttribute('x', touchX.toFixed(1));
+        }
+
+        // Update bar fill width
+        const barWidth = clampedPercent * sliderTrackWidth;
+        sliderBar.setAttribute('width', barWidth.toFixed(1));
+    }
+
+    enterViewMode() {
+        this.isViewMode = true;
+        this.rotationEnabled = true; // Keep auto-rotation enabled
+        this.userInteractionEnabled = false; // Disable user input
+        this.savedZoom = this.camera.position.z; // Save current zoom to return to
+        this.targetZoom = 1; // Zoom to size 1
+
+        // Hide UI elements
+        const navButtons = document.getElementById('nav-buttons');
+        const nameDisplay = document.getElementById('name-display');
+        const zoomIndicator = document.getElementById('zoom-indicator');
+        const velocityIndicator = document.getElementById('velocity-indicator');
+        const centerReticle = document.getElementById('center-reticle');
+        const sideIndicators = document.getElementById('side-indicators');
+
+        if (navButtons) navButtons.style.display = 'none';
+        if (nameDisplay) nameDisplay.style.display = 'none';
+        if (zoomIndicator) zoomIndicator.style.display = 'none';
+        if (velocityIndicator) velocityIndicator.style.display = 'none';
+        if (centerReticle) centerReticle.style.display = 'none';
+        if (sideIndicators) sideIndicators.style.display = 'none';
+
+        // Hide flying triangles
+        if (this.flyingTriangles) {
+            this.flyingTriangles.forEach(tri => {
+                if (tri.mesh) tri.mesh.visible = false;
+            });
+        }
+
+        // Show return button
+        const returnBtn = document.getElementById('return-btn');
+        if (returnBtn) returnBtn.style.display = 'block';
+    }
+
+    exitViewMode() {
+        this.isViewMode = false;
+        this.rotationEnabled = true;
+        this.userInteractionEnabled = true; // Re-enable user input
+        this.targetZoom = this.savedZoom || this.baseCameraDistance; // Return to saved zoom or base
+
+        // Show UI elements
+        const navButtons = document.getElementById('nav-buttons');
+        const nameDisplay = document.getElementById('name-display');
+        const zoomIndicator = document.getElementById('zoom-indicator');
+        const velocityIndicator = document.getElementById('velocity-indicator');
+        const centerReticle = document.getElementById('center-reticle');
+        const sideIndicators = document.getElementById('side-indicators');
+
+        if (navButtons) navButtons.style.display = 'block';
+        if (nameDisplay) nameDisplay.style.display = 'block';
+        if (zoomIndicator) zoomIndicator.style.display = 'block';
+        if (velocityIndicator) velocityIndicator.style.display = 'block';
+        if (centerReticle) centerReticle.style.display = 'block';
+        if (sideIndicators) sideIndicators.style.display = 'block';
+
+        // Show flying triangles
+        if (this.flyingTriangles) {
+            this.flyingTriangles.forEach(tri => {
+                if (tri.mesh) tri.mesh.visible = true;
+            });
+        }
+
+        // Hide return button
+        const returnBtn = document.getElementById('return-btn');
+        if (returnBtn) returnBtn.style.display = 'none';
+    }
+
     updateCameraForViewport() {
         // Get the actual rendered size of the UI square
         const svg = document.getElementById('ui-overlay');
@@ -762,11 +1037,13 @@ class WireframeGlobe {
         // Scale factor: larger square = closer camera (smaller scale), smaller square = further camera (larger scale)
         const scaleFactor = referenceSize / squareSize;
 
-        // Store current zoom offset from base
-        const currentOffset = this.camera ? this.camera.position.z - this.baseCameraDistance : 0;
+        // Store current zoom offset from base (if baseCameraDistance exists, meaning this isn't first call)
+        const currentOffset = (this.camera && this.baseCameraDistance)
+            ? this.camera.position.z - this.baseCameraDistance
+            : 0;
 
         // Update base distance with scale factor
-        this.baseCameraDistance = 9 * scaleFactor;
+        this.baseCameraDistance = this.initialCameraDistance * scaleFactor;
 
         // Reapply offset
         if (this.camera) {
@@ -774,8 +1051,8 @@ class WireframeGlobe {
         }
 
         // Update zoom bounds based on scale
-        this.minZoom = 6.0 * scaleFactor;
-        this.maxZoom = 12 * scaleFactor;
+        this.minZoom = this.initialMinZoom * scaleFactor;
+        this.maxZoom = this.initialMaxZoom * scaleFactor;
 
         // Clamp camera to new bounds
         if (this.camera) {

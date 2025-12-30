@@ -39,3 +39,48 @@ body {
 .velocity-bar-fill {
     transition: width 0.15s ease-out;
 }
+
+/* Zoom slider */
+.zoom-slider-handle {
+    pointer-events: all;
+    cursor: grab !important;
+    transition: opacity 0.2s ease;
+}
+
+.zoom-slider-handle:hover {
+    opacity: 1;
+}
+
+.zoom-slider-handle:active {
+    cursor: grabbing !important;
+}
+
+/* Navigation buttons */
+.nav-button, .return-button {
+    cursor: pointer;
+    pointer-events: all;
+    transition: all 0.3s ease;
+}
+
+.nav-button rect, .return-button rect {
+    transition: all 0.3s ease;
+}
+
+.nav-button text, .return-button text {
+    transition: all 0.3s ease;
+}
+
+.nav-button:hover rect, .return-button:hover rect {
+    opacity: 1;
+    fill: #FFA234;
+    fill-opacity: 0.1;
+}
+
+.nav-button:hover text, .return-button:hover text {
+    opacity: 1;
+    fill: #FFD700;
+}
+
+.nav-button:active rect, .return-button:active rect {
+    fill-opacity: 0.3;
+}
