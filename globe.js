@@ -18,6 +18,7 @@ class WireframeGlobe {
         this.initialCameraDistance = 5;
         this.initialMinZoom = 5.0;  // Must be <= initialCameraDistance
         this.initialMaxZoom = 15;
+        this.mobileZoomMultiplier = 0.6; // Mobile: 60% of distance (40% closer for larger sphere)
         this.updateCameraForViewport(); // This sets baseCameraDistance, minZoom, maxZoom, and camera.position.z
         
         // Renderer setup
@@ -906,8 +907,8 @@ class WireframeGlobe {
                 const frameCenterX = frameX + frameWidth / 2;
                 const frameCenterY = frameY + frameHeight / 2 - 100; // Move up 100px
                 const translateX = frameCenterX - 500; // Original center x
-                const translateY = frameCenterY - 500; // Original center y
-                const scale = 1.8; // Scale up the reticle
+                const translateY = frameCenterY - 425; // Original center y
+                const scale = 2.3; // Scale up the reticle
                 centerReticle.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
                 centerReticle.setAttribute('transform-origin', '500 500');
                 console.log('Reticle transform:', `translate(${translateX}, ${translateY}) scale(${scale})`);
@@ -921,17 +922,17 @@ class WireframeGlobe {
 
                 // Calculate new positions based on mobile frame
                 const frameCenterY = frameY + frameHeight / 2 - 100; // Match reticle position
-                const scale = 1.8; // Match reticle scale
+                const scale = 2.25; // Match reticle scale
                 // Adjusted to touch the scaled circle (radius 150 * 1.8 = 270)
-                const leftX = frameX + frameWidth / 2 - 270; // Circle radius distance from center
-                const rightX = frameX + frameWidth / 2 + 270; // Circle radius distance from center
+                const leftX = frameX + frameWidth / 2 - 380; // Circle radius distance from center
+                const rightX = frameX + frameWidth / 2 + 380; // Circle radius distance from center
 
                 if (leftIndicator) {
-                    leftIndicator.setAttribute('transform', `translate(${leftX - 330}, ${frameCenterY - 500}) scale(${scale})`);
+                    leftIndicator.setAttribute('transform', `translate(${leftX - 330}, ${frameCenterY - 420}) scale(${scale})`);
                     leftIndicator.setAttribute('transform-origin', '330 500');
                 }
                 if (rightIndicator) {
-                    rightIndicator.setAttribute('transform', `translate(${rightX - 670}, ${frameCenterY - 500}) scale(${scale})`);
+                    rightIndicator.setAttribute('transform', `translate(${rightX - 670}, ${frameCenterY - 420}) scale(${scale})`);
                     rightIndicator.setAttribute('transform-origin', '670 500');
                 }
             }
@@ -1142,7 +1143,10 @@ class WireframeGlobe {
 
             // Map to zoom range (minZoom to maxZoom)
             const newZoom = this.minZoom + percent * (this.maxZoom - this.minZoom);
-            this.camera.position.z = newZoom;
+
+            // Apply mobile adjustment to maintain closer zoom
+            const isMobile = window.innerWidth < 768;
+            this.camera.position.z = isMobile ? newZoom * this.mobileZoomMultiplier : newZoom;
 
             // Update slider position
             this.updateSliderPosition();
@@ -1351,7 +1355,7 @@ class WireframeGlobe {
             if (isMobile) {
                 this.camera.position.y = -0.2; // Move camera up (positive y moves camera up, making sphere appear lower, so we move up)
                 // Make sphere appear larger by moving camera closer
-                this.camera.position.z *= 0.6; // 30% closer
+                this.camera.position.z *= this.mobileZoomMultiplier;
             } else {
                 this.camera.position.y = 0; // Reset to center on desktop
             }
