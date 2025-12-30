@@ -9,11 +9,106 @@ body {
     overflow: hidden;
     width: 100vw;
     height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Name header (HTML div, shown on mobile) */
+.name-header {
+    display: none; /* Hidden on desktop */
+    text-align: center;
+    padding: 20px 0;
+    background: #0a0e27;
+    z-index: 20;
+}
+
+.name-text {
+    font-family: 'Departure Mono', monospace;
+    color: #FFA234;
+    font-size: 14px;
+    font-weight: normal;
+    margin: 0;
+    padding: 0 10px;
+    opacity: 0.8;
+    letter-spacing: 1px;
+}
+
+.name-lines {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    vertical-align: middle;
+}
+
+.name-lines .line {
+    display: inline-block;
+    width: 2px;
+    background: #FFA234;
+    opacity: 0.6;
+}
+
+/* Line heights - narrower and taller */
+.line-1 { height: 24px; }
+.line-2 { height: 20px; }
+.line-3 { height: 16px; }
+.line-4 { height: 12px; }
+.line-5 { height: 8px; }
+
+.name-lines {
+    gap: 6px; /* Narrower spacing */
+}
+
+/* Mobile styles */
+@media (max-width: 767px) {
+    .name-header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0; /* No gap - use margins for overlap */
+        background: none !important; /* Remove background to show sphere */
+        padding: 10px 0; /* Reduce padding on mobile */
+        position: absolute; /* Overlay on top of globe */
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 20; /* Above globe, below UI controls */
+    }
+
+    .name-text {
+        font-size: 32px; /* Much larger on mobile */
+        margin: 0 -30px; /* Negative margins to overlap with lines */
+    }
+
+    .name-lines {
+        gap: 6px; /* Lines closer together on mobile */
+    }
+
+    .name-lines .line {
+        width: 3px; /* Thicker on mobile for visibility */
+    }
+
+    /* Scale up each line proportionally on mobile - all more visible */
+    .line-1 { height: 40px; }
+    .line-2 { height: 34px; }
+    .line-3 { height: 28px; }
+    .line-4 { height: 22px; }
+    .line-5 { height: 16px; }
+
+    /* Globe container fills full height on mobile since name is absolutely positioned */
+    .globe-container {
+        height: 100vh;
+    }
+
+    /* Hide SVG name display on mobile */
+    .name-display {
+        display: none;
+    }
 }
 
 .globe-container {
     width: 100%;
     height: 100%;
+    flex: 1; /* Fill remaining space on mobile */
     position: relative;
     display: flex;
     align-items: center;

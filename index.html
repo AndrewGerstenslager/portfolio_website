@@ -11,10 +11,29 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Name header (outside SVG for better mobile positioning) -->
+    <div id="name-header" class="name-header">
+        <div class="name-lines name-lines-left">
+            <span class="line line-1"></span>
+            <span class="line line-2"></span>
+            <span class="line line-3"></span>
+            <span class="line line-4"></span>
+            <span class="line line-5"></span>
+        </div>
+        <h1 class="name-text">ANDREW GERSTENSLAGER</h1>
+        <div class="name-lines name-lines-right">
+            <span class="line line-5"></span>
+            <span class="line line-4"></span>
+            <span class="line line-3"></span>
+            <span class="line line-2"></span>
+            <span class="line line-1"></span>
+        </div>
+    </div>
+
     <div class="globe-container" id="globe-container">
         <canvas id="globe-canvas"></canvas>
         <svg id="ui-overlay" class="ui-overlay" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice">
-            <!-- Name with decorative lines -->
+            <!-- Name display in SVG (will be hidden on mobile) -->
             <g id="name-display" class="name-display">
                 <!-- Name text -->
                 <text x="500" y="262" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="16" text-anchor="middle" opacity="0.8">ANDREW GERSTENSLAGER</text>

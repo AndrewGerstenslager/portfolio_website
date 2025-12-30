@@ -15,7 +15,7 @@ class WireframeGlobe {
 
         // Responsive camera distance - scale based on viewport width
         // Desktop (>768px): base distance, Mobile: further away
-        this.initialCameraDistance = 5.0;
+        this.initialCameraDistance = 5;
         this.initialMinZoom = 5.0;  // Must be <= initialCameraDistance
         this.initialMaxZoom = 15;
         this.updateCameraForViewport(); // This sets baseCameraDistance, minZoom, maxZoom, and camera.position.z
@@ -59,6 +59,7 @@ class WireframeGlobe {
         this.setupControls();
         this.setupNavigationButtons();
         this.setupZoomSlider();
+        this.adjustUIForMobile();
         
         // Animation
         this.animate();
@@ -817,6 +818,277 @@ class WireframeGlobe {
         }
     }
 
+    adjustUIForMobile() {
+        const svg = document.getElementById('ui-overlay');
+        const nameHeader = document.getElementById('name-header');
+        const frameRects = document.querySelectorAll('#ui-overlay > rect');
+        if (!svg) return;
+
+        const isMobile = window.innerWidth < 768;
+
+        if (isMobile) {
+            // On mobile: make frame rectangular (taller than wide) to fit portrait screens
+            // Temp: get actual screen dimensions
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+            // Could use: const frameWidth = Math.min(900, screenWidth * 0.95);
+            // Could use: const frameHeight = Math.min(1300, screenHeight * 0.85);
+
+            const frameWidth = 900; // Almost full width
+            const frameHeight = 1400; // Much taller for mobile portrait
+            const frameX = (1000 - frameWidth) / 2; // Center horizontally (x=50)
+            const frameY = 250; // Moved down to accommodate name header
+
+            // Update the frame rectangles (outer and inner borders)
+            if (frameRects.length >= 2) {
+                // Outer frame
+                frameRects[0].setAttribute('x', frameX);
+                frameRects[0].setAttribute('y', frameY);
+                frameRects[0].setAttribute('width', frameWidth);
+                frameRects[0].setAttribute('height', frameHeight);
+
+                // Inner frame (offset by border width)
+                frameRects[1].setAttribute('x', frameX + 7);
+                frameRects[1].setAttribute('y', frameY + 7);
+                frameRects[1].setAttribute('width', frameWidth - 14);
+                frameRects[1].setAttribute('height', frameHeight - 14);
+            }
+
+            // Hide SVG name display on mobile - both style and visibility
+            const svgNameDisplay = document.getElementById('name-display');
+            if (svgNameDisplay) {
+                svgNameDisplay.style.display = 'none';
+                svgNameDisplay.style.visibility = 'hidden';
+            }
+
+            // Reposition and scale zoom indicator for mobile
+            const zoomIndicator = document.getElementById('zoom-indicator');
+            if (zoomIndicator) {
+                const zoomDisplay = zoomIndicator.querySelector('.zoom-display');
+                if (zoomDisplay) {
+                    // Scale large but not too wide for mobile
+                    const scale = 2.8;
+                    // Original position is around (295, 290), we want it at frame top-left
+                    const targetX = frameX + 15;
+                    const targetY = frameY + 20; // Higher up
+                    const translateX = targetX - 295;
+                    const translateY = targetY - 290;
+                    // Set transform-origin to top-left for predictable scaling
+                    zoomDisplay.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
+                    zoomDisplay.setAttribute('transform-origin', '295 290'); // Original position as origin
+                    console.log('Zoom: target=', targetX, targetY, 'translate=', translateX, translateY);
+                }
+            }
+
+            // Reposition and scale velocity indicator for mobile
+            const velocityIndicator = document.getElementById('velocity-indicator');
+            if (velocityIndicator) {
+                const velocityDisplay = velocityIndicator.querySelector('.velocity-display');
+                if (velocityDisplay) {
+                    // Scale large but not too wide for mobile
+                    const scale = 2.8;
+                    // Original position is around (565, 290), box width ~140px
+                    // Want it at top-right: frameX + frameWidth - scaled_width
+                    const scaledWidth = 140 * scale;
+                    const targetX = frameX + frameWidth - scaledWidth - 15;
+                    const targetY = frameY + 20; // Higher up
+                    const translateX = targetX - 565;
+                    const translateY = targetY - 290;
+                    velocityDisplay.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
+                    velocityDisplay.setAttribute('transform-origin', '565 290'); // Original position as origin
+                    console.log('Velocity: target=', targetX, targetY, 'translate=', translateX, translateY, 'scaledWidth=', scaledWidth);
+                }
+            }
+
+            // Reposition and scale center reticle to match frame center
+            const centerReticle = document.getElementById('center-reticle');
+            if (centerReticle) {
+                const frameCenterX = frameX + frameWidth / 2;
+                const frameCenterY = frameY + frameHeight / 2 - 100; // Move up 100px
+                const translateX = frameCenterX - 500; // Original center x
+                const translateY = frameCenterY - 500; // Original center y
+                const scale = 1.8; // Scale up the reticle
+                centerReticle.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
+                centerReticle.setAttribute('transform-origin', '500 500');
+                console.log('Reticle transform:', `translate(${translateX}, ${translateY}) scale(${scale})`);
+            }
+
+            // Reposition and scale side indicators to match new frame and touch circle
+            const sideIndicators = document.getElementById('side-indicators');
+            if (sideIndicators) {
+                const leftIndicator = sideIndicators.querySelector('.left-indicator');
+                const rightIndicator = sideIndicators.querySelector('.right-indicator');
+
+                // Calculate new positions based on mobile frame
+                const frameCenterY = frameY + frameHeight / 2 - 100; // Match reticle position
+                const scale = 1.8; // Match reticle scale
+                // Adjusted to touch the scaled circle (radius 150 * 1.8 = 270)
+                const leftX = frameX + frameWidth / 2 - 270; // Circle radius distance from center
+                const rightX = frameX + frameWidth / 2 + 270; // Circle radius distance from center
+
+                if (leftIndicator) {
+                    leftIndicator.setAttribute('transform', `translate(${leftX - 330}, ${frameCenterY - 500}) scale(${scale})`);
+                    leftIndicator.setAttribute('transform-origin', '330 500');
+                }
+                if (rightIndicator) {
+                    rightIndicator.setAttribute('transform', `translate(${rightX - 670}, ${frameCenterY - 500}) scale(${scale})`);
+                    rightIndicator.setAttribute('transform-origin', '670 500');
+                }
+            }
+
+            // Stack buttons vertically at bottom of mobile frame - full width, tall, large text
+            const navButtons = document.getElementById('nav-buttons');
+            if (navButtons) {
+                const buttons = navButtons.querySelectorAll('g.nav-button');
+                const buttonMargin = 40; // Margin from frame edges
+                const buttonWidth = frameWidth - (buttonMargin * 2); // Full width minus margins
+                const buttonHeight = 70; // Much taller buttons
+                const buttonSpacing = 20; // Space between buttons
+                const startY = frameY + frameHeight - (buttons.length * (buttonHeight + buttonSpacing)) - 20; // Stack from bottom with padding
+                const buttonX = frameX + buttonMargin; // Left edge with margin
+
+                buttons.forEach((btn, idx) => {
+                    const rect = btn.querySelector('rect');
+                    const text = btn.querySelector('text');
+                    if (rect && text) {
+                        const y = startY + idx * (buttonHeight + buttonSpacing);
+                        rect.setAttribute('x', buttonX);
+                        rect.setAttribute('y', y);
+                        rect.setAttribute('width', buttonWidth);
+                        rect.setAttribute('height', buttonHeight);
+                        text.setAttribute('x', frameX + frameWidth / 2); // Center text horizontally
+                        text.setAttribute('y', y + 50); // Vertically center in taller button
+                        text.setAttribute('font-size', '50'); // Double size - very large text
+                    }
+                });
+            }
+
+            // Reposition return button to match mobile layout
+            const returnBtn = document.getElementById('return-btn');
+            if (returnBtn) {
+                const buttonMargin = 40;
+                const buttonWidth = frameWidth - (buttonMargin * 2);
+                const buttonHeight = 70;
+                const buttonY = frameY + frameHeight - buttonHeight - 20;
+                const buttonX = frameX + buttonMargin;
+                const rect = returnBtn.querySelector('rect');
+                const text = returnBtn.querySelector('text');
+                if (rect && text) {
+                    rect.setAttribute('x', buttonX);
+                    rect.setAttribute('y', buttonY);
+                    rect.setAttribute('width', buttonWidth);
+                    rect.setAttribute('height', buttonHeight);
+                    text.setAttribute('x', frameX + frameWidth / 2);
+                    text.setAttribute('y', buttonY + 45);
+                    text.setAttribute('font-size', '40');
+                }
+            }
+
+            // Use taller viewBox for mobile portrait orientation
+            svg.setAttribute('viewBox', '0 0 1000 1400');
+            svg.setAttribute('preserveAspectRatio', 'xMidYMin meet'); // Align to top, show everything
+
+            // Show HTML name header
+            if (nameHeader) nameHeader.style.display = 'flex';
+        } else {
+            // Desktop: restore square frame
+            if (frameRects.length >= 2) {
+                frameRects[0].setAttribute('x', '275');
+                frameRects[0].setAttribute('y', '275');
+                frameRects[0].setAttribute('width', '450');
+                frameRects[0].setAttribute('height', '450');
+
+                frameRects[1].setAttribute('x', '282');
+                frameRects[1].setAttribute('y', '282');
+                frameRects[1].setAttribute('width', '436');
+                frameRects[1].setAttribute('height', '436');
+            }
+
+            // Reset zoom indicator transform
+            const zoomIndicator = document.getElementById('zoom-indicator');
+            if (zoomIndicator) {
+                const zoomDisplay = zoomIndicator.querySelector('.zoom-display');
+                if (zoomDisplay) {
+                    zoomDisplay.removeAttribute('transform');
+                }
+            }
+
+            // Reset velocity indicator transform
+            const velocityIndicator = document.getElementById('velocity-indicator');
+            if (velocityIndicator) {
+                const velocityDisplay = velocityIndicator.querySelector('.velocity-display');
+                if (velocityDisplay) {
+                    velocityDisplay.removeAttribute('transform');
+                }
+            }
+
+            // Reset center reticle transform
+            const centerReticle = document.getElementById('center-reticle');
+            if (centerReticle) {
+                centerReticle.removeAttribute('transform');
+            }
+
+            // Reset side indicators transform
+            const sideIndicators = document.getElementById('side-indicators');
+            if (sideIndicators) {
+                const leftIndicator = sideIndicators.querySelector('.left-indicator');
+                const rightIndicator = sideIndicators.querySelector('.right-indicator');
+                if (leftIndicator) leftIndicator.removeAttribute('transform');
+                if (rightIndicator) rightIndicator.removeAttribute('transform');
+            }
+
+            // Reset buttons to desktop layout (horizontal, original sizes)
+            const navButtons = document.getElementById('nav-buttons');
+            if (navButtons) {
+                const buttons = navButtons.querySelectorAll('g.nav-button');
+                const desktopPositions = [
+                    { x: 290, y: 665, textX: 350, width: 120, height: 40 }, // About Me
+                    { x: 440, y: 665, textX: 500, width: 120, height: 40 }, // Portfolio
+                    { x: 590, y: 665, textX: 650, width: 120, height: 40 }  // Demos
+                ];
+                buttons.forEach((btn, idx) => {
+                    if (desktopPositions[idx]) {
+                        const rect = btn.querySelector('rect');
+                        const text = btn.querySelector('text');
+                        const pos = desktopPositions[idx];
+                        if (rect && text) {
+                            rect.setAttribute('x', pos.x);
+                            rect.setAttribute('y', pos.y);
+                            rect.setAttribute('width', pos.width);
+                            rect.setAttribute('height', pos.height);
+                            text.setAttribute('x', pos.textX);
+                            text.setAttribute('y', 690);
+                            text.setAttribute('font-size', '12');
+                        }
+                    }
+                });
+            }
+
+            // Reset return button
+            const returnBtn = document.getElementById('return-btn');
+            if (returnBtn) {
+                const rect = returnBtn.querySelector('rect');
+                const text = returnBtn.querySelector('text');
+                if (rect && text) {
+                    rect.setAttribute('x', 430);
+                    rect.setAttribute('y', 665);
+                    rect.setAttribute('width', 140);
+                    rect.setAttribute('height', 40);
+                    text.setAttribute('x', 500);
+                    text.setAttribute('y', 690);
+                    text.setAttribute('font-size', '12');
+                }
+            }
+
+            // Standard viewBox
+            svg.setAttribute('viewBox', '0 0 1000 1000');
+            svg.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+
+            // Hide HTML name header
+            if (nameHeader) nameHeader.style.display = 'none';
+        }
+    }
+
     setupZoomSlider() {
         const sliderHandle = document.getElementById('zoom-slider-handle');
         const sliderBar = document.getElementById('zoom-bar-fill');
@@ -831,10 +1103,6 @@ class WireframeGlobe {
         }
 
         let isDragging = false;
-        const sliderMinX = 305; // Left edge of slider track
-        const sliderMaxX = 425; // Right edge of slider track (305 + 120)
-        const sliderTrackWidth = sliderMaxX - sliderMinX;
-        const handleWidth = 10; // Visual handle width stays constant
 
         const updateZoomFromSlider = (clientX) => {
             this.targetZoom = null; // Cancel any zoom animation
@@ -845,6 +1113,26 @@ class WireframeGlobe {
             pt.x = clientX;
             pt.y = 0;
             const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+            // Get actual slider track bounds (accounting for any transforms)
+            const sliderTrack = sliderBar.parentElement.querySelector('rect[x="305"]');
+            if (!sliderTrack) return;
+
+            const trackX = parseFloat(sliderTrack.getAttribute('x'));
+            const trackWidth = parseFloat(sliderTrack.getAttribute('width'));
+
+            // Check if parent has transform
+            const zoomDisplay = document.querySelector('.zoom-display');
+            let transformX = 0;
+            if (zoomDisplay && zoomDisplay.hasAttribute('transform')) {
+                const transform = zoomDisplay.getAttribute('transform');
+                const match = transform.match(/translate\(([^,]+),/);
+                if (match) transformX = parseFloat(match[1]);
+            }
+
+            const sliderMinX = trackX + transformX;
+            const sliderMaxX = trackX + trackWidth + transformX;
+            const sliderTrackWidth = trackWidth;
 
             // Clamp to slider bounds
             let newX = Math.max(sliderMinX, Math.min(sliderMaxX, svgP.x));
@@ -957,7 +1245,7 @@ class WireframeGlobe {
         this.rotationEnabled = true; // Keep auto-rotation enabled
         this.userInteractionEnabled = false; // Disable user input
         this.savedZoom = this.camera.position.z; // Save current zoom to return to
-        this.targetZoom = 1; // Zoom to size 1
+        this.targetZoom = 0.75; // Zoom to size 0.75
 
         // Hide UI elements
         const navButtons = document.getElementById('nav-buttons');
@@ -1057,6 +1345,16 @@ class WireframeGlobe {
         // Clamp camera to new bounds
         if (this.camera) {
             this.camera.position.z = Math.max(this.minZoom, Math.min(this.maxZoom, this.camera.position.z));
+
+            // Mobile adjustments: move sphere up and make it larger
+            const isMobile = window.innerWidth < 768;
+            if (isMobile) {
+                this.camera.position.y = -0.2; // Move camera up (positive y moves camera up, making sphere appear lower, so we move up)
+                // Make sphere appear larger by moving camera closer
+                this.camera.position.z *= 0.6; // 30% closer
+            } else {
+                this.camera.position.y = 0; // Reset to center on desktop
+            }
         }
     }
 
@@ -1071,6 +1369,9 @@ class WireframeGlobe {
 
         // Update camera distance for new viewport size
         this.updateCameraForViewport();
+
+        // Adjust UI positioning for mobile
+        this.adjustUIForMobile();
     }
 }
 
