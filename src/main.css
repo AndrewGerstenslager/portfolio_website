@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+/* ── Custom properties ── */
+@theme {
+  --color-brand: #FFA234;
+  --color-bg: #0a0e27;
+  --font-mono: 'Departure Mono', monospace;
+}
+
+/* ── Name header: hidden on desktop, overlaid on mobile ── */
+#name-header {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  #name-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    padding: 10px 0;
+    background: transparent;
+  }
+
+  .name-text {
+    font-size: 32px;
+    margin: 0 -30px;
+  }
+
+  .name-lines .line {
+    width: 3px;
+  }
+
+  .line-1 { height: 40px; }
+  .line-2 { height: 34px; }
+  .line-3 { height: 28px; }
+  .line-4 { height: 22px; }
+  .line-5 { height: 16px; }
+
+  .globe-container {
+    height: 100vh;
+  }
+
+  .name-display {
+    display: none;
+  }
+}
+
+/* ── Decorative lines beside name ── */
+.name-lines .line {
+  display: inline-block;
+  width: 2px;
+  background: #FFA234;
+  opacity: 0.6;
+}
+
+.line-1 { height: 24px; }
+.line-2 { height: 20px; }
+.line-3 { height: 16px; }
+.line-4 { height: 12px; }
+.line-5 { height: 8px; }
+
+/* ── Velocity bar smooth transition ── */
+.velocity-bar-fill {
+  transition: width 0.15s ease-out;
+}
+
+/* ── Zoom slider ── */
+.zoom-slider-handle {
+  pointer-events: all;
+  cursor: grab !important;
+  transition: opacity 0.2s ease;
+}
+
+.zoom-slider-handle:hover { opacity: 1; }
+.zoom-slider-handle:active { cursor: grabbing !important; }
+
+/* ── SVG navigation buttons ── */
+.nav-button,
+.return-button {
+  cursor: pointer;
+  pointer-events: all;
+  transition: all 0.3s ease;
+}
+
+.nav-button rect,
+.return-button rect {
+  transition: all 0.3s ease;
+}
+
+.nav-button text,
+.return-button text {
+  transition: all 0.3s ease;
+}
+
+.nav-button:hover rect,
+.return-button:hover rect {
+  opacity: 1;
+  fill: #FFA234;
+  fill-opacity: 0.1;
+}
+
+.nav-button:hover text,
+.return-button:hover text {
+  opacity: 1;
+  fill: #FFD700;
+}
+
+.nav-button:active rect,
+.return-button:active rect {
+  fill-opacity: 0.3;
+}
