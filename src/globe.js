@@ -120,12 +120,13 @@ class WireframeGlobe {
                     float opacity = mix(maxOpacity, minOpacity, normalizedDepth);
 
                     gl_FragColor = vec4(color, opacity);
+                    #include <colorspace_fragment>
                 }
             `,
             transparent: true,
             depthWrite: false
         });
-        
+
         // Convert each edge to a tube with variable thickness
         const tubeSegments = 8; // Number of segments around the tube circumference
         const baseRadius = 0.0075; // Base radius for all tubes (half thickness)
@@ -230,6 +231,7 @@ class WireframeGlobe {
                     float opacity = mix(maxOpacity, minOpacity, normalizedDepth);
 
                     gl_FragColor = vec4(color, opacity);
+                    #include <colorspace_fragment>
                 }
             `,
             transparent: true,
@@ -1392,7 +1394,7 @@ class WireframeGlobe {
             // Mobile adjustments: move sphere up and make it larger
             const isMobile = window.innerWidth < 768;
             if (isMobile) {
-                this.camera.position.y = -0.2; // Move camera up (positive y moves camera up, making sphere appear lower, so we move up)
+                this.camera.position.y = 0;
                 // Make sphere appear larger by moving camera closer
                 this.camera.position.z *= this.mobileZoomMultiplier;
             } else {
