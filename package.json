@@ -1,0 +1,26 @@
+{
+  "name": "portfolio_website",
+  "version": "1.0.0",
+  "description": "A retro-futuristic portfolio website with a 3D interactive wireframe globe, styled like a government terminal interface.",
+  "main": "globe.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:39945/git/AndrewGerstenslager/portfolio_website"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.1",
+    "tailwindcss": "^4.2.1",
+    "vite": "^7.3.1"
+  },
+  "dependencies": {
+    "three": "^0.183.2"
+  }
+}

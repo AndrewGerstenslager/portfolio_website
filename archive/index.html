@@ -8,23 +8,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Departure+Mono&display=swap" rel="stylesheet">
-    <script type="module" src="/src/main.js"></script>
+    <link rel="stylesheet" href="styles.css">
 </head>
-<body class="bg-[#0a0e27] overflow-hidden w-screen h-screen flex flex-col">
-
-    <!-- Name header: visible on mobile only (CSS controls display) -->
-    <div id="name-header">
-        <div class="name-lines name-lines-left inline-flex gap-1.5 items-center align-middle">
+<body>
+    <!-- Name header (outside SVG for better mobile positioning) -->
+    <div id="name-header" class="name-header">
+        <div class="name-lines name-lines-left">
             <span class="line line-1"></span>
             <span class="line line-2"></span>
             <span class="line line-3"></span>
             <span class="line line-4"></span>
             <span class="line line-5"></span>
         </div>
-        <h1 class="name-text font-[family-name:var(--font-mono)] text-[#FFA234] text-sm font-normal opacity-80 tracking-wide px-2.5 m-0">
-            ANDREW GERSTENSLAGER
-        </h1>
-        <div class="name-lines name-lines-right inline-flex gap-1.5 items-center align-middle">
+        <h1 class="name-text">ANDREW GERSTENSLAGER</h1>
+        <div class="name-lines name-lines-right">
             <span class="line line-5"></span>
             <span class="line line-4"></span>
             <span class="line line-3"></span>
@@ -33,23 +30,22 @@
         </div>
     </div>
 
-    <!-- Globe fills all available space -->
-    <div class="globe-container w-full flex-1 relative flex items-center justify-center" id="globe-container">
-        <canvas id="globe-canvas" class="w-full h-full block"></canvas>
-
-        <svg id="ui-overlay"
-             class="ui-overlay absolute inset-0 w-full h-full pointer-events-none z-10"
-             viewBox="0 0 1000 1000"
-             preserveAspectRatio="xMidYMid meet">
-
-            <!-- Name display (desktop only, hidden on mobile via CSS) -->
+    <div class="globe-container" id="globe-container">
+        <canvas id="globe-canvas"></canvas>
+        <svg id="ui-overlay" class="ui-overlay" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice">
+            <!-- Name display in SVG (will be hidden on mobile) -->
             <g id="name-display" class="name-display">
+                <!-- Name text -->
                 <text x="500" y="262" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="16" text-anchor="middle" opacity="0.8">ANDREW GERSTENSLAGER</text>
+
+                <!-- Left side lines (5 lines) -->
                 <line x1="245" y1="250" x2="245" y2="268" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                 <line x1="265" y1="252" x2="265" y2="266" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                 <line x1="285" y1="253" x2="285" y2="265" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                 <line x1="305" y1="254" x2="305" y2="264" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                 <line x1="325" y1="255" x2="325" y2="263" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+
+                <!-- Right side lines (5 lines) -->
                 <line x1="675" y1="255" x2="675" y2="263" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                 <line x1="695" y1="254" x2="695" y2="264" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                 <line x1="715" y1="253" x2="715" y2="265" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
@@ -57,82 +53,115 @@
                 <line x1="755" y1="250" x2="755" y2="268" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
             </g>
 
-            <!-- Border frame -->
+            <!-- Thick rectangular border frame -->
             <rect x="275" y="275" width="450" height="450" fill="none" stroke="#FFA234" stroke-width="6" opacity="0.4"/>
             <rect x="282" y="282" width="436" height="436" fill="none" stroke="#FFA234" stroke-width="1" opacity="0.3"/>
 
-            <!-- Center reticle -->
+            <!-- Center reticle circle with directional lines (larger than sphere) -->
             <g id="center-reticle" class="center-reticle">
                 <circle cx="500" cy="500" r="150" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <!-- N/E/S/W lines -->
                 <line x1="500" y1="350" x2="500" y2="335" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                 <line x1="650" y1="500" x2="665" y2="500" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                 <line x1="500" y1="650" x2="500" y2="665" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                 <line x1="350" y1="500" x2="335" y2="500" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                <!-- Diagonal lines -->
                 <line x1="606" y1="394" x2="617" y2="383" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                 <line x1="606" y1="606" x2="617" y2="617" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                 <line x1="394" y1="606" x2="383" y2="617" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                 <line x1="394" y1="394" x2="383" y2="383" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
             </g>
 
-            <!-- Side indicators -->
+            <!-- Side indicators (inverted) -->
             <g id="side-indicators" class="side-indicators">
+                <!-- Left indicator (now points outward) -->
                 <g class="left-indicator">
                     <line x1="330" y1="400" x2="330" y2="460" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
                     <line x1="330" y1="460" x2="345" y2="500" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
                     <line x1="345" y1="500" x2="330" y2="540" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
                     <line x1="330" y1="540" x2="330" y2="600" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
+                    <!-- Angled end segments pointing outward -->
                     <line x1="330" y1="400" x2="318" y2="388" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
                     <line x1="330" y1="600" x2="318" y2="612" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
                 </g>
+
+                <!-- Right indicator (now points outward) -->
                 <g class="right-indicator">
                     <line x1="670" y1="400" x2="670" y2="460" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
                     <line x1="670" y1="460" x2="655" y2="500" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
                     <line x1="655" y1="500" x2="670" y2="540" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
                     <line x1="670" y1="540" x2="670" y2="600" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
+                    <!-- Angled end segments pointing outward -->
                     <line x1="670" y1="400" x2="682" y2="388" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
                     <line x1="670" y1="600" x2="682" y2="612" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
                 </g>
             </g>
 
-            <!-- Zoom indicator -->
+            <!-- Zoom indicator with full box -->
             <g id="zoom-indicator" class="zoom-indicator">
+                <!-- Top left - all 4 corners -->
                 <g class="zoom-display">
+                    <!-- Top left corner -->
                     <path d="M 295 305 L 295 290 L 310 290" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                    <!-- Top right corner -->
                     <path d="M 420 290 L 435 290 L 435 305" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                    <!-- Bottom left corner -->
                     <path d="M 295 340 L 295 355 L 310 355" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+                    <!-- Bottom right corner -->
                     <path d="M 435 340 L 435 355 L 420 355" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+
+                    <!-- ZOOM label -->
                     <text x="365" y="305" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="11" text-anchor="middle" opacity="0.7">ZOOM</text>
+
+                    <!-- Zoom slider bar (orange track) -->
                     <rect x="305" y="322" width="120" height="8" fill="none" stroke="#FFA234" stroke-width="1" opacity="0.3"/>
                     <rect id="zoom-bar-fill" x="305" y="322" width="60" height="8" fill="#FFA234" opacity="0.6"/>
+
+                    <!-- Zoom slider handle (white draggable rectangle) -->
                     <rect id="zoom-slider-handle" class="zoom-slider-handle" x="360" y="318" width="10" height="16" fill="#FFFFFF" opacity="0.9" style="cursor: grab;"/>
+                    <!-- Larger invisible touch area for mobile -->
                     <rect id="zoom-slider-touch-area" class="zoom-slider-touch-area" x="360" y="290" width="10" height="65" fill="transparent" opacity="0" style="cursor: grab; pointer-events: none;"/>
                 </g>
             </g>
 
             <!-- Velocity indicator -->
             <g id="velocity-indicator" class="velocity-indicator">
+                <!-- Top right - velocity bar -->
                 <g class="velocity-display">
+                    <!-- Corners for velocity box (top right position) -->
                     <path d="M 565 305 L 565 290 L 580 290" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                     <path d="M 690 290 L 705 290 L 705 305" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                     <path d="M 565 340 L 565 355 L 580 355" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
                     <path d="M 705 340 L 705 355 L 690 355" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
+
+                    <!-- VELOCITY label -->
                     <text x="635" y="305" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="10" text-anchor="middle" opacity="0.7">VELOCITY</text>
+
+                    <!-- Velocity bar background -->
                     <rect x="580" y="317" width="110" height="8" fill="none" stroke="#FFA234" stroke-width="1" opacity="0.3"/>
+                    <!-- Velocity bar fill (smooth transition via CSS) -->
                     <rect id="velocity-bar-fill" class="velocity-bar-fill" x="580" y="317" width="0" height="8" fill="#FFA234" opacity="0.6"/>
+
+                    <!-- Velocity value text -->
                     <text id="velocity-value" x="635" y="345" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="14" text-anchor="middle" opacity="0.8">0.00</text>
                 </g>
             </g>
 
-            <!-- Bottom navigation -->
+            <!-- Bottom navigation buttons -->
             <g id="nav-buttons" class="nav-buttons">
+                <!-- About Me button -->
                 <g class="nav-button" id="about-btn">
                     <rect x="290" y="665" width="120" height="40" fill="none" stroke="#FFA234" stroke-width="2" opacity="0.6"/>
                     <text x="350" y="690" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="12" text-anchor="middle" opacity="0.9">ABOUT ME</text>
                 </g>
+
+                <!-- Portfolio button -->
                 <g class="nav-button" id="portfolio-btn">
                     <rect x="440" y="665" width="120" height="40" fill="none" stroke="#FFA234" stroke-width="2" opacity="0.6"/>
                     <text x="500" y="690" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="12" text-anchor="middle" opacity="0.9">PORTFOLIO</text>
                 </g>
+
+                <!-- Demos button -->
                 <g class="nav-button" id="demos-btn">
                     <rect x="590" y="665" width="120" height="40" fill="none" stroke="#FFA234" stroke-width="2" opacity="0.6"/>
                     <text x="650" y="690" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="12" text-anchor="middle" opacity="0.9">DEMOS</text>
@@ -147,5 +176,7 @@
         </svg>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="globe.js"></script>
 </body>
 </html>
