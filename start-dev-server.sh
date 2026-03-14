@@ -1,21 +1,11 @@
 #!/bin/bash
 
-# Local development server with auto-reload
-# This script starts a server that automatically refreshes when files change
+# Local development server with Vite
+# This script starts a dev server with hot-module reloading and auto-refresh
 
-PORT=8000
+echo "Installing dependencies if needed..."
+npm install
 
-echo "Starting local development server on http://localhost:$PORT"
-echo "The browser will auto-reload when you save changes to files."
 echo ""
-
-# Check if live-server is installed
-if ! command -v live-server &> /dev/null; then
-    echo "live-server not found. Installing..."
-    npm install -g live-server
-    echo ""
-fi
-
-# Start the server
-echo "Starting server... (Press Ctrl+C to stop)"
-live-server --port=$PORT --open=/
+echo "Starting Vite dev server (Press Ctrl+C to stop)"
+npm run dev

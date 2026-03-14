@@ -1,1427 +1,468 @@
-import * as THREE from 'three'
+import * as THREE from 'three';
 
-// 3D Wireframe Globe with Triangle Mesh
-class WireframeGlobe {
-    constructor(containerId) {
-        this.container = document.getElementById(containerId);
-        this.canvas = document.getElementById('globe-canvas');
-        
-        // Scene setup
+/**
+ * WireframeGlobe — Three.js scene with an icosahedron wireframe globe,
+ * vertex spheres, glow points, and flying triangle tracers.
+ *
+ * Rendering only — no DOM/UI manipulation, no input handling.
+ */
+export class WireframeGlobe {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this._globeRadius = 1.2;
+
+        // Scene
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x0a0e27);
-        
-        // Camera setup
-        const width = this.container.clientWidth;
-        const height = this.container.clientHeight;
-        this.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
 
-        // Responsive camera distance - scale based on viewport width
-        // Desktop (>768px): base distance, Mobile: further away
-        this.initialCameraDistance = 5;
-        this.initialMinZoom = 5.0;  // Must be <= initialCameraDistance
-        this.initialMaxZoom = 15;
-        this.mobileZoomMultiplier = 0.6; // Mobile: 60% of distance (40% closer for larger sphere)
-        this.updateCameraForViewport(); // This sets baseCameraDistance, minZoom, maxZoom, and camera.position.z
-        
-        // Renderer setup
-        this.renderer = new THREE.WebGLRenderer({
-            canvas: this.canvas,
-            antialias: true,
-            alpha: true
-        });
-        this.renderer.setSize(width, height);
-        this.renderer.setPixelRatio(window.devicePixelRatio);
-        
-        // Create wireframe globe
-        this.createGlobe();
-        
-        // Interaction state
-        this.isInteracting = false;
+        // Camera — use viewport dimensions (renderer.setSize overwrites canvas inline style)
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        this._fovDeg = 45;
+        this.camera = new THREE.PerspectiveCamera(this._fovDeg, w / h, 0.1, 1000);
 
-        // Momentum/physics state
-        this.rotationVelocity = new THREE.Vector3(0, 0.002, 0); // Start with gentle Y rotation
-        this.damping = 0.98; // How quickly momentum decays (0.98 = slower deceleration)
-        this.minRotationSpeed = 0.0016; // Minimum rotation speed to maintain
+        // Zoom bounds (will be recalculated by fitToContainer)
+        this.minZoom = 3;
+        this.maxZoom = 15;
+        this._baseZoom = 5;
+        this.camera.position.z = 5;
 
-        // Store base quaternion for rotation
-        this.baseQuaternion = new THREE.Quaternion();
+        // Renderer
+        this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+        this.renderer.setSize(w, h);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-        // Time tracking
-        this.lastTime = Date.now();
+        // Build scene contents
+        this._buildGlobe();
+        this._addVertexSpheres();
+        this._addGlowPoints();
+        this._addFlyingTriangles();
 
-        // Zoom bounds (will be scaled by viewport in updateCameraForViewport)
-
-        // View mode state
-        this.isViewMode = false;
+        // Momentum / physics
+        this.rotationVelocity = new THREE.Vector3(0, 0.002, 0);
+        this.damping = 0.98;
+        this.minRotationSpeed = 0.0016;
         this.rotationEnabled = true;
-        this.userInteractionEnabled = true; // Separate flag for user input
-        this.targetZoom = null;
-        this.zoomSpeed = 0.15; // Increased for faster animation
 
-        // Controls
-        this.setupControls();
-        this.setupNavigationButtons();
-        this.setupZoomSlider();
-        this.adjustUIForMobile();
-        
-        // Animation
-        this.animate();
-        
-        // Handle window resize
-        window.addEventListener('resize', () => this.handleResize());
+        // Zoom animation
+        this.targetZoom = null;
+        this.zoomSpeed = 0.15;
+
+        // Timing
+        this._lastTime = performance.now();
+
+        // Start loop
+        this._animate = this._animate.bind(this);
+        requestAnimationFrame(this._animate);
+
+        // Resize is driven externally by main.js (so HUD can be sized first)
     }
-    
-    createGlobe() {
+
+    // ── Public API ─────────────────────────────────────────
+
+    /** Apply an incremental rotation quaternion to the globe */
+    applyRotation(quaternion) {
+        this.globe.quaternion.multiplyQuaternions(quaternion, this.globe.quaternion);
+        this._syncLayers();
+    }
+
+    /** Set rotation velocity (axis * angle) for momentum */
+    setVelocity(vel) {
+        this.rotationVelocity.copy(vel);
+    }
+
+    /** Apply a signed zoom delta */
+    applyZoomDelta(delta) {
+        this.targetZoom = null;
+        const z = this.camera.position.z + delta;
+        this.camera.position.z = THREE.MathUtils.clamp(z, this.minZoom, this.maxZoom);
+    }
+
+    /** Animate zoom to a specific distance */
+    zoomTo(target) {
+        this.targetZoom = THREE.MathUtils.clamp(target, this.minZoom, this.maxZoom);
+    }
+
+    /** Current zoom as 0–1 fraction (min → max) */
+    get zoomFraction() {
+        return (this.camera.position.z - this.minZoom) / (this.maxZoom - this.minZoom);
+    }
+
+    /** Set zoom from a 0–1 fraction */
+    set zoomFraction(f) {
+        this.targetZoom = null;
+        const clamped = THREE.MathUtils.clamp(f, 0, 1);
+        this.camera.position.z = this.minZoom + clamped * (this.maxZoom - this.minZoom);
+    }
+
+    /** Current velocity magnitude, normalized to roughly 0–1 */
+    get velocityFraction() {
+        return Math.min(this.rotationVelocity.length() / 0.05, 1);
+    }
+
+    /** Show / hide flying triangles */
+    setTrianglesVisible(visible) {
+        this.flyingTriangles.forEach(t => { t.mesh.visible = visible; });
+    }
+
+    /**
+     * Size the globe so it fits a target circle within a HUD container.
+     * @param {HTMLElement} hudEl       — the HUD container element
+     * @param {number}      circleFrac — circle diameter as fraction of HUD width (e.g. 0.56)
+     */
+    fitToContainer(hudEl, circleFrac = 0.56) {
+        const hudRect = hudEl.getBoundingClientRect();
+        const canvasH = window.innerHeight;
+
+        // Circle's pixel diameter
+        const circlePx = circleFrac * hudRect.width;
+
+        // Camera distance to make globe project to that size
+        // projected_diameter = 2 * R * canvasH / (2 * Z * tan(fov/2))
+        this._tanHalf = Math.tan(THREE.MathUtils.degToRad(this._fovDeg / 2));
+        const z = (this._globeRadius * canvasH) / (circlePx * this._tanHalf);
+
+        this._baseZoom = z;
+        // Globe can never be LARGER than the circle (minZoom = base distance).
+        // User can only zoom out (further away).
+        this.minZoom = z;
+        this.maxZoom = z * 3;
+
+        // Preserve current zoom ratio if user had zoomed out, otherwise reset to base
+        const currentRatio = this.camera.position.z / (this._prevBaseZoom || z);
+        this._prevBaseZoom = z;
+        this.camera.position.z = THREE.MathUtils.clamp(z * currentRatio, this.minZoom, this.maxZoom);
+
+        // Store pixel offsets for continuous camera correction
+        const canvasRect = this.canvas.getBoundingClientRect();
+        const hudCenterX = hudRect.left + hudRect.width / 2;
+        const hudCenterY = hudRect.top + hudRect.height / 2;
+        const canvasCenterX = canvasRect.left + canvasRect.width / 2;
+        const canvasCenterY = canvasRect.top + canvasRect.height / 2;
+        this._xOffsetPixels = hudCenterX - canvasCenterX;
+        this._yOffsetPixels = hudCenterY - canvasCenterY;
+        this._canvasH = canvasH;
+
+        // Apply offset immediately
+        this._updateCameraOffset();
+    }
+
+    /** Recalculate camera X/Y based on current Z so globe stays centered on HUD */
+    _updateCameraOffset() {
+        if (this._yOffsetPixels == null || !this._tanHalf) return;
+        const visibleHeight = 2 * this.camera.position.z * this._tanHalf;
+        const pxToWorld = visibleHeight / this._canvasH;
+        this.camera.position.x = -(this._xOffsetPixels * pxToWorld);
+        this.camera.position.y = this._yOffsetPixels * pxToWorld;
+    }
+
+    // ── Scene building ─────────────────────────────────────
+
+    _buildGlobe() {
         const radius = 1.2;
-        const segments = 3; // Lower = larger triangles, more geometric look
-        
-        // Create base geometry
-        const geometry = new THREE.IcosahedronGeometry(radius, segments);
-        
-        // Get edges and convert to tube geometry for variable thickness
+        const geometry = new THREE.IcosahedronGeometry(radius, 3);
         const edges = new THREE.EdgesGeometry(geometry);
         const positions = edges.attributes.position;
-        
-        // Create a group to hold all the line tubes
-        const globeGroup = new THREE.Group();
-        
-        // Custom shader material with depth-based opacity
+
+        const group = new THREE.Group();
+
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 color: { value: new THREE.Color(0xFFA234) },
-                cameraZ: { value: this.camera.position.z }
+                cameraZ: { value: this.camera.position.z },
             },
             vertexShader: `
                 varying vec3 vViewPosition;
-
                 void main() {
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    vViewPosition = mvPosition.xyz;
-                    gl_Position = projectionMatrix * mvPosition;
+                    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+                    vViewPosition = mv.xyz;
+                    gl_Position = projectionMatrix * mv;
                 }
             `,
             fragmentShader: `
                 uniform vec3 color;
                 uniform float cameraZ;
                 varying vec3 vViewPosition;
-
                 void main() {
                     float depth = -vViewPosition.z;
-
-                    // Scale depth range based on camera distance
-                    float sphereRadius = 1.2;
-                    float nearDepth = cameraZ - sphereRadius * 1.5;
-                    float farDepth = cameraZ + sphereRadius * 1.5;
-
-                    // Map depth to opacity
-                    float minOpacity = 0.07;
-                    float maxOpacity = 1.0;
-                    float normalizedDepth = smoothstep(nearDepth, farDepth, depth);
-                    float opacity = mix(maxOpacity, minOpacity, normalizedDepth);
-
+                    float r = 1.2;
+                    float near = cameraZ - r * 1.5;
+                    float far  = cameraZ + r * 1.5;
+                    float t = smoothstep(near, far, depth);
+                    float opacity = mix(1.0, 0.07, t);
                     gl_FragColor = vec4(color, opacity);
                     #include <colorspace_fragment>
                 }
             `,
             transparent: true,
-            depthWrite: false
+            depthWrite: false,
         });
 
-        // Convert each edge to a tube with variable thickness
-        const tubeSegments = 8; // Number of segments around the tube circumference
-        const baseRadius = 0.0075; // Base radius for all tubes (half thickness)
-        
-        // Process edges in pairs (each edge has 2 vertices)
+        const tubeSegs = 8;
+        const tubeRadius = 0.0075;
+
         for (let i = 0; i < positions.count; i += 2) {
-            const start = new THREE.Vector3(
-                positions.getX(i),
-                positions.getY(i),
-                positions.getZ(i)
-            );
-            const end = new THREE.Vector3(
-                positions.getX(i + 1),
-                positions.getY(i + 1),
-                positions.getZ(i + 1)
-            );
-            
-            // Create a curve for this edge
-            const curve = new THREE.LineCurve3(start, end);
-            
-            // Create tube geometry with base radius
-            // The shader will scale each vertex based on its distance from camera
-            const tubeGeometry = new THREE.TubeGeometry(curve, 1, baseRadius, tubeSegments, false);
-            
-            // Create mesh with shader material
-            const tubeMesh = new THREE.Mesh(tubeGeometry, material);
-            globeGroup.add(tubeMesh);
+            const a = new THREE.Vector3(positions.getX(i), positions.getY(i), positions.getZ(i));
+            const b = new THREE.Vector3(positions.getX(i+1), positions.getY(i+1), positions.getZ(i+1));
+            const tube = new THREE.TubeGeometry(new THREE.LineCurve3(a, b), 1, tubeRadius, tubeSegs, false);
+            group.add(new THREE.Mesh(tube, material));
         }
-        
-        // Add the group to scene
-        this.globe = globeGroup;
-        this.scene.add(this.globe);
 
-        // Store for rotation
-        this.globeLayers = [this.globe];
-
-        // Store material reference to update uniforms if needed
-        this.globeMaterial = material;
-
-        // Add vertex spheres
-        this.addVertexSpheres(geometry);
-
-        // Add subtle glow effect with points
-        this.addGlowEffect();
-
-        // Add flying triangles with tracers
-        this.addFlyingTriangles();
+        this.globe = group;
+        this.scene.add(group);
+        this._layers = [group];
+        this._globeMaterial = material;
+        this._baseGeometry = geometry;
     }
 
-    addVertexSpheres(geometry) {
-        // Get unique vertices from the geometry
-        const vertices = geometry.attributes.position;
-        const vertexSet = new Set();
-        const uniqueVertices = [];
+    _addVertexSpheres() {
+        const verts = this._baseGeometry.attributes.position;
+        const seen = new Set();
+        const unique = [];
 
-        // Collect unique vertices (avoid duplicates)
-        for (let i = 0; i < vertices.count; i++) {
-            const x = vertices.getX(i);
-            const y = vertices.getY(i);
-            const z = vertices.getZ(i);
-            const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
-
-            if (!vertexSet.has(key)) {
-                vertexSet.add(key);
-                uniqueVertices.push(new THREE.Vector3(x, y, z));
+        for (let i = 0; i < verts.count; i++) {
+            const key = `${verts.getX(i).toFixed(5)},${verts.getY(i).toFixed(5)},${verts.getZ(i).toFixed(5)}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                unique.push(new THREE.Vector3(verts.getX(i), verts.getY(i), verts.getZ(i)));
             }
         }
 
-        // Create small spheres at each vertex with depth-based opacity
-        const sphereGeometry = new THREE.SphereGeometry(0.02, 8, 8);
-        const sphereMaterial = new THREE.ShaderMaterial({
+        const sphereGeo = new THREE.SphereGeometry(0.02, 8, 8);
+        const mat = new THREE.ShaderMaterial({
             uniforms: {
                 color: { value: new THREE.Color(0xFFA234) },
-                cameraZ: { value: this.camera.position.z }
+                cameraZ: { value: this.camera.position.z },
             },
             vertexShader: `
                 varying vec3 vViewPosition;
-
                 void main() {
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    vViewPosition = mvPosition.xyz;
-                    gl_Position = projectionMatrix * mvPosition;
+                    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+                    vViewPosition = mv.xyz;
+                    gl_Position = projectionMatrix * mv;
                 }
             `,
             fragmentShader: `
                 uniform vec3 color;
                 uniform float cameraZ;
                 varying vec3 vViewPosition;
-
                 void main() {
                     float depth = -vViewPosition.z;
-
-                    // Scale depth range based on camera distance
-                    float sphereRadius = 1.2;
-                    float nearDepth = cameraZ - sphereRadius * 1.5;
-                    float farDepth = cameraZ + sphereRadius * 1.5;
-
-                    // Map depth to opacity
-                    float minOpacity = 0.07;
-                    float maxOpacity = 1.0;
-                    float normalizedDepth = smoothstep(nearDepth, farDepth, depth);
-                    float opacity = mix(maxOpacity, minOpacity, normalizedDepth);
-
+                    float r = 1.2;
+                    float near = cameraZ - r * 1.5;
+                    float far  = cameraZ + r * 1.5;
+                    float t = smoothstep(near, far, depth);
+                    float opacity = mix(1.0, 0.07, t);
                     gl_FragColor = vec4(color, opacity);
                     #include <colorspace_fragment>
                 }
             `,
             transparent: true,
-            depthWrite: false
+            depthWrite: false,
         });
 
-        this.vertexSphereMaterial = sphereMaterial;
-
-        const vertexGroup = new THREE.Group();
-
-        uniqueVertices.forEach(vertex => {
-            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-            sphere.position.copy(vertex);
-            vertexGroup.add(sphere);
+        this._vertexMat = mat;
+        const grp = new THREE.Group();
+        unique.forEach(v => {
+            const m = new THREE.Mesh(sphereGeo, mat);
+            m.position.copy(v);
+            grp.add(m);
         });
-
-        this.scene.add(vertexGroup);
-        this.globeLayers.push(vertexGroup);
+        this.scene.add(grp);
+        this._layers.push(grp);
     }
-    
-    addGlowEffect() {
-        // Add some glowing points on the surface
-        const pointGeometry = new THREE.BufferGeometry();
-        const pointCount = 200;
-        const positions = new Float32Array(pointCount * 3);
-        const radius = 1.21;
-        
-        for (let i = 0; i < pointCount; i++) {
+
+    _addGlowPoints() {
+        const count = 200;
+        const pos = new Float32Array(count * 3);
+        const r = 1.21;
+
+        for (let i = 0; i < count; i++) {
             const theta = Math.random() * Math.PI * 2;
             const phi = Math.acos(Math.random() * 2 - 1);
-            
-            positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
-            positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
-            positions[i * 3 + 2] = radius * Math.cos(phi);
+            pos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+            pos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+            pos[i*3+2] = r * Math.cos(phi);
         }
-        
-        pointGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        
-        const pointMaterial = new THREE.PointsMaterial({
-            color: 0xFFA234,
-            size: 0.02,
-            transparent: true,
-            opacity: 0.0
-        });
-        
-        const points = new THREE.Points(pointGeometry, pointMaterial);
-        this.scene.add(points);
-        this.globeLayers.push(points);
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+            color: 0xFFA234, size: 0.02, transparent: true, opacity: 0,
+        }));
+        this.scene.add(pts);
+        this._layers.push(pts);
     }
 
-    addFlyingTriangles() {
+    _addFlyingTriangles() {
         this.flyingTriangles = [];
-        const numTriangles = 5;
-        const baseRadius = 1.2;
+        const baseR = 1.2;
 
-        for (let i = 0; i < numTriangles; i++) {
-            // Random position on sphere (spherical coordinates)
-            const theta = Math.random() * Math.PI * 2; // Azimuthal angle
-            const phi = Math.acos(Math.random() * 2 - 1); // Polar angle
-            const heightOffset = 0.05 + Math.random() * 0.1; // Random height 0.05-0.15 above surface
-            const radius = baseRadius + heightOffset;
+        for (let i = 0; i < 5; i++) {
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(Math.random() * 2 - 1);
+            const radius = baseR + 0.05 + Math.random() * 0.1;
+            const speed = 0.3 + Math.random() * 0.3;
 
-            // Random velocity (tangent to sphere)
-            const speed = 0.3 + Math.random() * 0.3; // Speed: 0.3-0.6
+            const size = 0.03;
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+                0, size, 0, -size*0.5, 0, 0, size*0.5, 0, 0
+            ]), 3));
 
-            // Create triangle geometry
-            const triangleSize = 0.03;
-            const triangleGeometry = new THREE.BufferGeometry();
-            const vertices = new Float32Array([
-                0, triangleSize, 0,           // Top
-                -triangleSize * 0.5, 0, 0,    // Bottom left
-                triangleSize * 0.5, 0, 0      // Bottom right
-            ]);
-            triangleGeometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+            const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+                color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.8,
+            }));
+            this.globe.add(mesh);
 
-            const triangleMaterial = new THREE.MeshBasicMaterial({
-                color: 0xffffff,
-                side: THREE.DoubleSide,
-                transparent: true,
-                opacity: 0.8
-            });
+            const vTheta = (Math.random() - 0.5) * 2;
+            const vPhi = (Math.random() - 0.5) * 2;
+            const mag = Math.hypot(vTheta, vPhi);
 
-            const triangleMesh = new THREE.Mesh(triangleGeometry, triangleMaterial);
-
-            // Add to globe so it rotates with it
-            this.globe.add(triangleMesh);
-
-            // Store triangle data
-            const triangle = {
-                mesh: triangleMesh,
-                theta: theta,
-                phi: phi,
-                radius: radius,
-                speed: speed,
-                velocityTheta: (Math.random() - 0.5) * 2, // Random direction
-                velocityPhi: (Math.random() - 0.5) * 2,
-                tracerPoints: [], // Array of {position, time}
-                tracerLine: null
+            const tri = {
+                mesh, theta, phi, radius, speed,
+                velocityTheta: (vTheta / mag) * speed,
+                velocityPhi: (vPhi / mag) * speed,
+                tracerPoints: [],
+                tracerLine: null,
             };
-
-            // Normalize velocity
-            const velMag = Math.sqrt(triangle.velocityTheta ** 2 + triangle.velocityPhi ** 2);
-            triangle.velocityTheta = (triangle.velocityTheta / velMag) * speed;
-            triangle.velocityPhi = (triangle.velocityPhi / velMag) * speed;
-
-            this.flyingTriangles.push(triangle);
-
-            // Update initial position
-            this.updateTrianglePosition(triangle);
+            this.flyingTriangles.push(tri);
+            this._updateTriPos(tri);
         }
     }
 
-    updateTrianglePosition(triangle) {
-        // Convert spherical to cartesian
-        const x = triangle.radius * Math.sin(triangle.phi) * Math.cos(triangle.theta);
-        const y = triangle.radius * Math.sin(triangle.phi) * Math.sin(triangle.theta);
-        const z = triangle.radius * Math.cos(triangle.phi);
+    // ── Animation loop ─────────────────────────────────────
 
-        triangle.mesh.position.set(x, y, z);
+    _animate(now) {
+        requestAnimationFrame(this._animate);
+        const dt = (now - this._lastTime) / 1000;
+        this._lastTime = now;
 
-        // Orient triangle to lay flat on surface and point in direction of movement
-        // Calculate tangent directions on sphere
-        const tangentTheta = new THREE.Vector3(
-            -Math.sin(triangle.theta),
-            Math.cos(triangle.theta),
-            0
-        ).normalize();
+        // Update shader uniforms
+        const z = this.camera.position.z;
+        this._globeMaterial.uniforms.cameraZ.value = z;
+        if (this._vertexMat) this._vertexMat.uniforms.cameraZ.value = z;
 
-        const tangentPhi = new THREE.Vector3(
-            Math.cos(triangle.phi) * Math.cos(triangle.theta),
-            Math.cos(triangle.phi) * Math.sin(triangle.theta),
-            -Math.sin(triangle.phi)
-        ).normalize();
-
-        // Direction of movement (in tangent plane)
-        const direction = tangentTheta.clone().multiplyScalar(triangle.velocityTheta)
-            .add(tangentPhi.clone().multiplyScalar(triangle.velocityPhi))
-            .normalize();
-
-        // Normal pointing away from sphere center (this is "up" for the triangle)
-        const normal = new THREE.Vector3(x, y, z).normalize();
-
-        // Orient triangle to lay flat:
-        // - normal = up (z-axis of triangle)
-        // - direction = forward (y-axis, pointing direction of travel)
-        // - right = perpendicular to both
-        const forward = direction;
-        const up = normal;
-        const right = new THREE.Vector3().crossVectors(forward, up).normalize();
-
-        // Create rotation matrix: right=x, forward=y, up=z
-        const matrix = new THREE.Matrix4();
-        matrix.makeBasis(right, forward, up);
-        triangle.mesh.rotation.setFromRotationMatrix(matrix);
-
-        // Scale based on distance from camera
-        const distanceToCamera = triangle.mesh.position.distanceTo(this.camera.position);
-        const minScale = 0.5;
-        const maxScale = 2.5; // Increased for larger triangles when near
-        const minDist = this.minZoom;
-        const maxDist = this.maxZoom;
-
-        // Closer = larger, further = smaller
-        const normalizedDist = (distanceToCamera - minDist) / (maxDist - minDist);
-        const scale = maxScale - (normalizedDist * (maxScale - minScale));
-        triangle.mesh.scale.setScalar(Math.max(minScale, Math.min(maxScale, scale)));
-    }
-
-    updateFlyingTriangles(deltaTime) {
-        const currentTime = Date.now();
-        const tracerDuration = 5000; // 5 seconds in milliseconds
-
-        this.flyingTriangles.forEach(triangle => {
-            // Update position
-            triangle.theta += triangle.velocityTheta * deltaTime;
-            triangle.phi += triangle.velocityPhi * deltaTime;
-
-            // Keep phi in valid range [0, PI]
-            if (triangle.phi < 0) {
-                triangle.phi = -triangle.phi;
-                triangle.velocityPhi = -triangle.velocityPhi;
-                triangle.theta += Math.PI;
-            }
-            if (triangle.phi > Math.PI) {
-                triangle.phi = 2 * Math.PI - triangle.phi;
-                triangle.velocityPhi = -triangle.velocityPhi;
-                triangle.theta += Math.PI;
-            }
-
-            // Normalize theta to [0, 2PI]
-            triangle.theta = triangle.theta % (Math.PI * 2);
-            if (triangle.theta < 0) triangle.theta += Math.PI * 2;
-
-            // Update mesh position
-            this.updateTrianglePosition(triangle);
-
-            // Add current position to tracer
-            const currentPos = triangle.mesh.position.clone();
-            triangle.tracerPoints.push({
-                position: currentPos,
-                time: currentTime
-            });
-
-            // Remove old tracer points
-            triangle.tracerPoints = triangle.tracerPoints.filter(
-                point => currentTime - point.time < tracerDuration
-            );
-
-            // Update tracer line
-            if (triangle.tracerLine) {
-                this.globe.remove(triangle.tracerLine);
-                triangle.tracerLine.geometry.dispose();
-            }
-
-            if (triangle.tracerPoints.length > 1) {
-                const tracerGeometry = new THREE.BufferGeometry();
-                const positions = [];
-                const colors = [];
-
-                triangle.tracerPoints.forEach((point, index) => {
-                    positions.push(point.position.x, point.position.y, point.position.z);
-
-                    // Fade out older points
-                    const age = currentTime - point.time;
-                    const alpha = 1 - (age / tracerDuration);
-                    colors.push(1, 1, 1, alpha); // White with varying alpha
-                });
-
-                tracerGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
-                tracerGeometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4));
-
-                const tracerMaterial = new THREE.LineBasicMaterial({
-                    vertexColors: true,
-                    transparent: true,
-                    opacity: 0.6,
-                    linewidth: 2
-                });
-
-                triangle.tracerLine = new THREE.Line(tracerGeometry, tracerMaterial);
-                this.globe.add(triangle.tracerLine);
-            }
-        });
-    }
-
-    setupControls() {
-        // Mouse controls for dragging
-        let previousMousePosition = { x: 0, y: 0 };
-        
-        // Listen on both canvas and container to catch all interactions
-        const handleMouseDown = (e) => {
-            if (!this.userInteractionEnabled) return; // Don't allow interaction if user input disabled
-            this.isInteracting = true;
-            this.canvas.style.cursor = 'grabbing';
-            previousMousePosition = {
-                x: e.clientX,
-                y: e.clientY
-            };
-        };
-        
-        this.canvas.addEventListener('mousedown', handleMouseDown);
-        this.container.addEventListener('mousedown', handleMouseDown);
-        
-        this.canvas.addEventListener('mousemove', (e) => {
-            if (!this.isInteracting) {
-                this.canvas.style.cursor = 'grab';
-                return;
-            }
-
-            const deltaX = e.clientX - previousMousePosition.x;
-            const deltaY = e.clientY - previousMousePosition.y;
-
-            // Trackball rotation: rotate around axis perpendicular to drag direction
-            const rotationSpeed = 0.005;
-
-            // Create rotation axis perpendicular to drag direction (in screen space)
-            // Drag right -> rotate around Y axis (up)
-            // Drag up -> rotate around X axis (right)
-            const axis = new THREE.Vector3(deltaY, deltaX, 0).normalize();
-            const angle = Math.sqrt(deltaX * deltaX + deltaY * deltaY) * rotationSpeed;
-
-            // Create quaternion for this rotation in camera space
-            const quaternion = new THREE.Quaternion().setFromAxisAngle(axis, angle);
-
-            // Apply rotation
-            this.globe.quaternion.multiplyQuaternions(quaternion, this.globe.quaternion);
-
-            // Store velocity as axis-angle for momentum
-            this.rotationVelocity.copy(axis).multiplyScalar(angle);
-
-            // Apply rotation to all layers
-            this.globeLayers.forEach(layer => {
-                layer.quaternion.copy(this.globe.quaternion);
-            });
-
-            previousMousePosition = {
-                x: e.clientX,
-                y: e.clientY
-            };
-        });
-        
-        const handleMouseUp = () => {
-            this.isInteracting = false;
-            this.canvas.style.cursor = 'grab';
-        };
-        
-        this.canvas.addEventListener('mouseup', handleMouseUp);
-        this.container.addEventListener('mouseup', handleMouseUp);
-        
-        const handleMouseLeave = () => {
-            this.isInteracting = false;
-            this.canvas.style.cursor = 'default';
-        };
-        
-        this.canvas.addEventListener('mouseleave', handleMouseLeave);
-        this.container.addEventListener('mouseleave', handleMouseLeave);
-        
-        // Set initial cursor
-        this.canvas.style.cursor = 'grab';
-        
-        // Touch controls for mobile with pinch-to-zoom
-        let touchStart = null;
-        let initialPinchDistance = null;
-        
-        // Calculate distance between two touches
-        const getTouchDistance = (touch1, touch2) => {
-            const dx = touch2.clientX - touch1.clientX;
-            const dy = touch2.clientY - touch1.clientY;
-            return Math.sqrt(dx * dx + dy * dy);
-        };
-        
-        const handleTouchStart = (e) => {
-            if (!this.userInteractionEnabled) return; // Don't allow interaction if user input disabled
-            e.preventDefault();
-            this.isInteracting = true;
-            
-            if (e.touches.length === 1) {
-                // Single touch - rotation
-                touchStart = {
-                    x: e.touches[0].clientX,
-                    y: e.touches[0].clientY
-                };
-                initialPinchDistance = null;
-            } else if (e.touches.length === 2) {
-                // Two touches - pinch to zoom
-                initialPinchDistance = getTouchDistance(e.touches[0], e.touches[1]);
-                touchStart = null;
-            }
-        };
-        
-        this.canvas.addEventListener('touchstart', handleTouchStart);
-        this.container.addEventListener('touchstart', handleTouchStart);
-        
-        this.canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-
-            if (e.touches.length === 1 && touchStart) {
-                // Single touch - rotate with trackball
-                const deltaX = e.touches[0].clientX - touchStart.x;
-                const deltaY = e.touches[0].clientY - touchStart.y;
-
-                const rotationSpeed = 0.005;
-
-                // Create rotation axis perpendicular to drag direction
-                const axis = new THREE.Vector3(deltaY, deltaX, 0).normalize();
-                const angle = Math.sqrt(deltaX * deltaX + deltaY * deltaY) * rotationSpeed;
-
-                // Create quaternion for this rotation
-                const quaternion = new THREE.Quaternion().setFromAxisAngle(axis, angle);
-
-                // Apply rotation
-                this.globe.quaternion.multiplyQuaternions(quaternion, this.globe.quaternion);
-
-                // Store velocity as axis-angle for momentum
-                this.rotationVelocity.copy(axis).multiplyScalar(angle);
-
-                this.globeLayers.forEach(layer => {
-                    layer.quaternion.copy(this.globe.quaternion);
-                });
-
-                touchStart = {
-                    x: e.touches[0].clientX,
-                    y: e.touches[0].clientY
-                };
-            } else if (e.touches.length === 2 && initialPinchDistance !== null) {
-                // Two touches - pinch to zoom
-                this.targetZoom = null; // Cancel any zoom animation
-                const currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
-                const distanceDelta = initialPinchDistance - currentDistance;
-
-                // Zoom speed factor (positive delta = pinch in = zoom in)
-                const zoomSpeed = 0.09; // 9x faster than original
-                const newZ = this.camera.position.z + (distanceDelta * zoomSpeed);
-                this.camera.position.z = Math.max(this.minZoom, Math.min(this.maxZoom, newZ));
-
-                // Update initial distance for smooth continuous zooming
-                initialPinchDistance = currentDistance;
-            }
-        });
-        
-        const handleTouchEnd = (e) => {
-            if (e.touches.length === 0) {
-                // All touches ended
-                this.isInteracting = false;
-                touchStart = null;
-                initialPinchDistance = null;
-            } else if (e.touches.length === 1) {
-                // One touch remains - switch to rotation mode
-                touchStart = {
-                    x: e.touches[0].clientX,
-                    y: e.touches[0].clientY
-                };
-                initialPinchDistance = null;
-            }
-        };
-        
-        this.canvas.addEventListener('touchend', handleTouchEnd);
-        this.container.addEventListener('touchend', handleTouchEnd);
-        
-        const handleTouchCancel = (e) => {
-            if (e.touches.length === 0) {
-                this.isInteracting = false;
-                touchStart = null;
-                initialPinchDistance = null;
-            }
-        };
-        
-        this.canvas.addEventListener('touchcancel', handleTouchCancel);
-        this.container.addEventListener('touchcancel', handleTouchCancel);
-        
-        // Zoom with scroll
-        this.canvas.addEventListener('wheel', (e) => {
-            if (!this.userInteractionEnabled) return; // Don't allow zoom if user input disabled
-            e.preventDefault();
-            this.targetZoom = null; // Cancel any zoom animation
-            const zoomSpeed = 0.1;
-            const newZ = this.camera.position.z + (e.deltaY > 0 ? zoomSpeed : -zoomSpeed);
-            this.camera.position.z = Math.max(this.minZoom, Math.min(this.maxZoom, newZ));
-        });
-        
-        // Auto-rotation when not dragging
-        this.autoRotate = true;
-        this.rotationSpeed = 0.0008; // Slower rotation
-    }
-    
-    animate() {
-        requestAnimationFrame(() => this.animate());
-
-        // Calculate delta time
-        const currentTime = Date.now();
-        const deltaTime = (currentTime - this.lastTime) / 1000; // Convert to seconds
-        this.lastTime = currentTime;
-
-        // Update camera Z in shaders for relative opacity
-        if (this.globeMaterial) {
-            this.globeMaterial.uniforms.cameraZ.value = this.camera.position.z;
-        }
-        if (this.vertexSphereMaterial) {
-            this.vertexSphereMaterial.uniforms.cameraZ.value = this.camera.position.z;
-        }
-
-        // Update UI zoom indicators
-        this.updateUIZoom();
-
-        // Update UI velocity indicator
-        this.updateUIVelocity();
-
-        // Update flying triangles
-        if (this.flyingTriangles) {
-            this.updateFlyingTriangles(deltaTime);
-        }
-
-        // Smooth zoom animation
+        // Smooth zoom
         if (this.targetZoom !== null) {
-            const diff = this.targetZoom - this.camera.position.z;
+            const diff = this.targetZoom - z;
             if (Math.abs(diff) > 0.01) {
                 this.camera.position.z += diff * this.zoomSpeed;
             } else {
                 this.camera.position.z = this.targetZoom;
-                this.targetZoom = null; // Animation complete
+                this.targetZoom = null;
             }
         }
 
-        // Apply momentum when not interacting (only if rotation is enabled)
-        if (!this.isInteracting && this.rotationEnabled) {
-            const velocityMagnitude = this.rotationVelocity.length();
-
-            if (velocityMagnitude > 0.00001) {
-                // Apply velocity to rotation using quaternion
+        // Momentum rotation
+        if (this.rotationEnabled) {
+            const mag = this.rotationVelocity.length();
+            if (mag > 0.00001) {
                 const axis = this.rotationVelocity.clone().normalize();
-                const angle = velocityMagnitude;
-                const quaternion = new THREE.Quaternion().setFromAxisAngle(axis, angle);
-
-                this.globe.quaternion.multiplyQuaternions(quaternion, this.globe.quaternion);
-
-                // Apply rotation to all layers
-                this.globeLayers.forEach(layer => {
-                    layer.quaternion.copy(this.globe.quaternion);
-                });
-
-                // Apply damping (friction) to slow down
+                const q = new THREE.Quaternion().setFromAxisAngle(axis, mag);
+                this.globe.quaternion.multiplyQuaternions(q, this.globe.quaternion);
+                this._syncLayers();
                 this.rotationVelocity.multiplyScalar(this.damping);
-
-                // Enforce minimum rotation speed - clamp to minimum while keeping direction
-                const newMagnitude = this.rotationVelocity.length();
-                if (newMagnitude < this.minRotationSpeed && newMagnitude > 0.00001) {
+                if (this.rotationVelocity.length() < this.minRotationSpeed) {
                     this.rotationVelocity.normalize().multiplyScalar(this.minRotationSpeed);
                 }
             }
         }
 
+        // Keep globe centered on HUD as zoom changes
+        this._updateCameraOffset();
+
+        // Flying triangles
+        this._updateTriangles(dt);
+
         this.renderer.render(this.scene, this.camera);
     }
-    
-    updateUIZoom() {
-        // Update slider position to reflect current zoom
-        this.updateSliderPosition();
+
+    _syncLayers() {
+        const q = this.globe.quaternion;
+        this._layers.forEach(l => l.quaternion.copy(q));
     }
 
-    updateUIVelocity() {
-        const velocityBar = document.getElementById('velocity-bar-fill');
-        const velocityValue = document.getElementById('velocity-value');
+    // ── Flying triangle logic ──────────────────────────────
 
-        if (velocityBar && velocityValue) {
-            // Calculate velocity magnitude
-            const velocityMagnitude = this.rotationVelocity.length();
+    _updateTriPos(tri) {
+        const { radius: r, phi, theta } = tri;
+        const x = r * Math.sin(phi) * Math.cos(theta);
+        const y = r * Math.sin(phi) * Math.sin(theta);
+        const z = r * Math.cos(phi);
+        tri.mesh.position.set(x, y, z);
 
-            // Scale to 0-100 range (adjust multiplier for sensitivity)
-            // Max velocity around 0.05 = 100%
-            const velocityPercent = Math.min((velocityMagnitude / 0.05) * 100, 100);
+        // Orient triangle flat on sphere surface
+        const tanTheta = new THREE.Vector3(-Math.sin(theta), Math.cos(theta), 0).normalize();
+        const tanPhi = new THREE.Vector3(
+            Math.cos(phi)*Math.cos(theta), Math.cos(phi)*Math.sin(theta), -Math.sin(phi)
+        ).normalize();
+        const dir = tanTheta.multiplyScalar(tri.velocityTheta)
+            .add(tanPhi.multiplyScalar(tri.velocityPhi)).normalize();
+        const up = new THREE.Vector3(x, y, z).normalize();
+        const right = new THREE.Vector3().crossVectors(dir, up).normalize();
+        const mat = new THREE.Matrix4().makeBasis(right, dir, up);
+        tri.mesh.rotation.setFromRotationMatrix(mat);
 
-            // Update bar width (max 110px)
-            const barWidth = (velocityPercent / 100) * 110;
-            velocityBar.setAttribute('width', barWidth.toFixed(1));
-
-            // Update text value
-            velocityValue.textContent = velocityPercent.toFixed(2);
-        }
+        // Scale by distance
+        const d = tri.mesh.position.distanceTo(this.camera.position);
+        const t = (d - this.minZoom) / (this.maxZoom - this.minZoom);
+        const s = THREE.MathUtils.clamp(2.5 - t * 2, 0.5, 2.5);
+        tri.mesh.scale.setScalar(s);
     }
 
-    setupNavigationButtons() {
-        // About Me button
-        const aboutBtn = document.getElementById('about-btn');
-        if (aboutBtn) {
-            const enterView = () => this.enterViewMode();
-            aboutBtn.addEventListener('click', enterView);
-            aboutBtn.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                enterView();
-            });
-        }
+    _updateTriangles(dt) {
+        const now = Date.now();
+        const tracerLife = 5000;
 
-        // Portfolio button
-        const portfolioBtn = document.getElementById('portfolio-btn');
-        if (portfolioBtn) {
-            const portfolioAction = () => {
-                console.log('Portfolio clicked');
-                // TODO: Portfolio view
-            };
-            portfolioBtn.addEventListener('click', portfolioAction);
-            portfolioBtn.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                portfolioAction();
-            });
-        }
+        this.flyingTriangles.forEach(tri => {
+            tri.theta += tri.velocityTheta * dt;
+            tri.phi += tri.velocityPhi * dt;
 
-        // Demos button
-        const demosBtn = document.getElementById('demos-btn');
-        if (demosBtn) {
-            const demosAction = () => {
-                console.log('Demos clicked');
-                // TODO: Demos view
-            };
-            demosBtn.addEventListener('click', demosAction);
-            demosBtn.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                demosAction();
-            });
-        }
+            if (tri.phi < 0) { tri.phi = -tri.phi; tri.velocityPhi *= -1; tri.theta += Math.PI; }
+            if (tri.phi > Math.PI) { tri.phi = 2*Math.PI - tri.phi; tri.velocityPhi *= -1; tri.theta += Math.PI; }
+            tri.theta = ((tri.theta % (Math.PI*2)) + Math.PI*2) % (Math.PI*2);
 
-        // Return button
-        const returnBtn = document.getElementById('return-btn');
-        if (returnBtn) {
-            const exitView = () => this.exitViewMode();
-            returnBtn.addEventListener('click', exitView);
-            returnBtn.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                exitView();
-            });
-        }
-    }
+            this._updateTriPos(tri);
 
-    adjustUIForMobile() {
-        const svg = document.getElementById('ui-overlay');
-        const nameHeader = document.getElementById('name-header');
-        const frameRects = document.querySelectorAll('#ui-overlay > rect');
-        if (!svg) return;
+            // Tracers
+            tri.tracerPoints.push({ position: tri.mesh.position.clone(), time: now });
+            tri.tracerPoints = tri.tracerPoints.filter(p => now - p.time < tracerLife);
 
-        const isMobile = window.innerWidth < 768;
-
-        if (isMobile) {
-            // On mobile: make frame rectangular (taller than wide) to fit portrait screens
-            // Temp: get actual screen dimensions
-            const screenWidth = window.innerWidth;
-            const screenHeight = window.innerHeight;
-            // Could use: const frameWidth = Math.min(900, screenWidth * 0.95);
-            // Could use: const frameHeight = Math.min(1300, screenHeight * 0.85);
-
-            const frameWidth = 900; // Almost full width
-            const frameHeight = 1400; // Much taller for mobile portrait
-            const frameX = (1000 - frameWidth) / 2; // Center horizontally (x=50)
-            const frameY = 250; // Moved down to accommodate name header
-
-            // Update the frame rectangles (outer and inner borders)
-            if (frameRects.length >= 2) {
-                // Outer frame
-                frameRects[0].setAttribute('x', frameX);
-                frameRects[0].setAttribute('y', frameY);
-                frameRects[0].setAttribute('width', frameWidth);
-                frameRects[0].setAttribute('height', frameHeight);
-
-                // Inner frame (offset by border width)
-                frameRects[1].setAttribute('x', frameX + 7);
-                frameRects[1].setAttribute('y', frameY + 7);
-                frameRects[1].setAttribute('width', frameWidth - 14);
-                frameRects[1].setAttribute('height', frameHeight - 14);
+            if (tri.tracerLine) {
+                this.globe.remove(tri.tracerLine);
+                tri.tracerLine.geometry.dispose();
             }
 
-            // Hide SVG name display on mobile - both style and visibility
-            const svgNameDisplay = document.getElementById('name-display');
-            if (svgNameDisplay) {
-                svgNameDisplay.style.display = 'none';
-                svgNameDisplay.style.visibility = 'hidden';
-            }
-
-            // Reposition and scale zoom indicator for mobile
-            const zoomIndicator = document.getElementById('zoom-indicator');
-            if (zoomIndicator) {
-                const zoomDisplay = zoomIndicator.querySelector('.zoom-display');
-                if (zoomDisplay) {
-                    // Scale large but not too wide for mobile
-                    const scale = 2.8;
-                    // Original position is around (295, 290), we want it at frame top-left
-                    const targetX = frameX + 15;
-                    const targetY = frameY + 20; // Higher up
-                    const translateX = targetX - 295;
-                    const translateY = targetY - 290;
-                    // Set transform-origin to top-left for predictable scaling
-                    zoomDisplay.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
-                    zoomDisplay.setAttribute('transform-origin', '295 290'); // Original position as origin
-                    console.log('Zoom: target=', targetX, targetY, 'translate=', translateX, translateY);
-                }
-            }
-
-            // Reposition and scale velocity indicator for mobile
-            const velocityIndicator = document.getElementById('velocity-indicator');
-            if (velocityIndicator) {
-                const velocityDisplay = velocityIndicator.querySelector('.velocity-display');
-                if (velocityDisplay) {
-                    // Scale large but not too wide for mobile
-                    const scale = 2.8;
-                    // Original position is around (565, 290), box width ~140px
-                    // Want it at top-right: frameX + frameWidth - scaled_width
-                    const scaledWidth = 140 * scale;
-                    const targetX = frameX + frameWidth - scaledWidth - 15;
-                    const targetY = frameY + 20; // Higher up
-                    const translateX = targetX - 565;
-                    const translateY = targetY - 290;
-                    velocityDisplay.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
-                    velocityDisplay.setAttribute('transform-origin', '565 290'); // Original position as origin
-                    console.log('Velocity: target=', targetX, targetY, 'translate=', translateX, translateY, 'scaledWidth=', scaledWidth);
-                }
-            }
-
-            // Reposition and scale center reticle to match frame center
-            const centerReticle = document.getElementById('center-reticle');
-            if (centerReticle) {
-                const frameCenterX = frameX + frameWidth / 2;
-                const frameCenterY = frameY + frameHeight / 2 - 100; // Move up 100px
-                const translateX = frameCenterX - 500; // Original center x
-                const translateY = frameCenterY - 425; // Original center y
-                const scale = 2.3; // Scale up the reticle
-                centerReticle.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
-                centerReticle.setAttribute('transform-origin', '500 500');
-                console.log('Reticle transform:', `translate(${translateX}, ${translateY}) scale(${scale})`);
-            }
-
-            // Reposition and scale side indicators to match new frame and touch circle
-            const sideIndicators = document.getElementById('side-indicators');
-            if (sideIndicators) {
-                const leftIndicator = sideIndicators.querySelector('.left-indicator');
-                const rightIndicator = sideIndicators.querySelector('.right-indicator');
-
-                // Calculate new positions based on mobile frame
-                const frameCenterY = frameY + frameHeight / 2 - 100; // Match reticle position
-                const scale = 2.25; // Match reticle scale
-                // Adjusted to touch the scaled circle (radius 150 * 1.8 = 270)
-                const leftX = frameX + frameWidth / 2 - 380; // Circle radius distance from center
-                const rightX = frameX + frameWidth / 2 + 380; // Circle radius distance from center
-
-                if (leftIndicator) {
-                    leftIndicator.setAttribute('transform', `translate(${leftX - 330}, ${frameCenterY - 420}) scale(${scale})`);
-                    leftIndicator.setAttribute('transform-origin', '330 500');
-                }
-                if (rightIndicator) {
-                    rightIndicator.setAttribute('transform', `translate(${rightX - 670}, ${frameCenterY - 420}) scale(${scale})`);
-                    rightIndicator.setAttribute('transform-origin', '670 500');
-                }
-            }
-
-            // Stack buttons vertically at bottom of mobile frame - full width, tall, large text
-            const navButtons = document.getElementById('nav-buttons');
-            if (navButtons) {
-                const buttons = navButtons.querySelectorAll('g.nav-button');
-                const buttonMargin = 40; // Margin from frame edges
-                const buttonWidth = frameWidth - (buttonMargin * 2); // Full width minus margins
-                const buttonHeight = 70; // Much taller buttons
-                const buttonSpacing = 20; // Space between buttons
-                const startY = frameY + frameHeight - (buttons.length * (buttonHeight + buttonSpacing)) - 20; // Stack from bottom with padding
-                const buttonX = frameX + buttonMargin; // Left edge with margin
-
-                buttons.forEach((btn, idx) => {
-                    const rect = btn.querySelector('rect');
-                    const text = btn.querySelector('text');
-                    if (rect && text) {
-                        const y = startY + idx * (buttonHeight + buttonSpacing);
-                        rect.setAttribute('x', buttonX);
-                        rect.setAttribute('y', y);
-                        rect.setAttribute('width', buttonWidth);
-                        rect.setAttribute('height', buttonHeight);
-                        text.setAttribute('x', frameX + frameWidth / 2); // Center text horizontally
-                        text.setAttribute('y', y + 50); // Vertically center in taller button
-                        text.setAttribute('font-size', '50'); // Double size - very large text
-                    }
+            if (tri.tracerPoints.length > 1) {
+                const positions = [];
+                const colors = [];
+                tri.tracerPoints.forEach(p => {
+                    positions.push(p.position.x, p.position.y, p.position.z);
+                    const alpha = 1 - (now - p.time) / tracerLife;
+                    colors.push(1, 1, 1, alpha);
                 });
-            }
-
-            // Reposition return button to match mobile layout
-            const returnBtn = document.getElementById('return-btn');
-            if (returnBtn) {
-                const buttonMargin = 40;
-                const buttonWidth = frameWidth - (buttonMargin * 2);
-                const buttonHeight = 70;
-                const buttonY = frameY + frameHeight - buttonHeight - 20;
-                const buttonX = frameX + buttonMargin;
-                const rect = returnBtn.querySelector('rect');
-                const text = returnBtn.querySelector('text');
-                if (rect && text) {
-                    rect.setAttribute('x', buttonX);
-                    rect.setAttribute('y', buttonY);
-                    rect.setAttribute('width', buttonWidth);
-                    rect.setAttribute('height', buttonHeight);
-                    text.setAttribute('x', frameX + frameWidth / 2);
-                    text.setAttribute('y', buttonY + 45);
-                    text.setAttribute('font-size', '40');
-                }
-            }
-
-            // Use taller viewBox for mobile portrait orientation
-            svg.setAttribute('viewBox', '0 0 1000 1400');
-            svg.setAttribute('preserveAspectRatio', 'xMidYMin meet'); // Align to top, show everything
-
-            // Show HTML name header
-            if (nameHeader) nameHeader.style.display = 'flex';
-        } else {
-            // Desktop: restore square frame
-            if (frameRects.length >= 2) {
-                frameRects[0].setAttribute('x', '275');
-                frameRects[0].setAttribute('y', '275');
-                frameRects[0].setAttribute('width', '450');
-                frameRects[0].setAttribute('height', '450');
-
-                frameRects[1].setAttribute('x', '282');
-                frameRects[1].setAttribute('y', '282');
-                frameRects[1].setAttribute('width', '436');
-                frameRects[1].setAttribute('height', '436');
-            }
-
-            // Reset zoom indicator transform
-            const zoomIndicator = document.getElementById('zoom-indicator');
-            if (zoomIndicator) {
-                const zoomDisplay = zoomIndicator.querySelector('.zoom-display');
-                if (zoomDisplay) {
-                    zoomDisplay.removeAttribute('transform');
-                }
-            }
-
-            // Reset velocity indicator transform
-            const velocityIndicator = document.getElementById('velocity-indicator');
-            if (velocityIndicator) {
-                const velocityDisplay = velocityIndicator.querySelector('.velocity-display');
-                if (velocityDisplay) {
-                    velocityDisplay.removeAttribute('transform');
-                }
-            }
-
-            // Reset center reticle transform
-            const centerReticle = document.getElementById('center-reticle');
-            if (centerReticle) {
-                centerReticle.removeAttribute('transform');
-            }
-
-            // Reset side indicators transform
-            const sideIndicators = document.getElementById('side-indicators');
-            if (sideIndicators) {
-                const leftIndicator = sideIndicators.querySelector('.left-indicator');
-                const rightIndicator = sideIndicators.querySelector('.right-indicator');
-                if (leftIndicator) leftIndicator.removeAttribute('transform');
-                if (rightIndicator) rightIndicator.removeAttribute('transform');
-            }
-
-            // Reset buttons to desktop layout (horizontal, original sizes)
-            const navButtons = document.getElementById('nav-buttons');
-            if (navButtons) {
-                const buttons = navButtons.querySelectorAll('g.nav-button');
-                const desktopPositions = [
-                    { x: 290, y: 665, textX: 350, width: 120, height: 40 }, // About Me
-                    { x: 440, y: 665, textX: 500, width: 120, height: 40 }, // Portfolio
-                    { x: 590, y: 665, textX: 650, width: 120, height: 40 }  // Demos
-                ];
-                buttons.forEach((btn, idx) => {
-                    if (desktopPositions[idx]) {
-                        const rect = btn.querySelector('rect');
-                        const text = btn.querySelector('text');
-                        const pos = desktopPositions[idx];
-                        if (rect && text) {
-                            rect.setAttribute('x', pos.x);
-                            rect.setAttribute('y', pos.y);
-                            rect.setAttribute('width', pos.width);
-                            rect.setAttribute('height', pos.height);
-                            text.setAttribute('x', pos.textX);
-                            text.setAttribute('y', 690);
-                            text.setAttribute('font-size', '12');
-                        }
-                    }
-                });
-            }
-
-            // Reset return button
-            const returnBtn = document.getElementById('return-btn');
-            if (returnBtn) {
-                const rect = returnBtn.querySelector('rect');
-                const text = returnBtn.querySelector('text');
-                if (rect && text) {
-                    rect.setAttribute('x', 430);
-                    rect.setAttribute('y', 665);
-                    rect.setAttribute('width', 140);
-                    rect.setAttribute('height', 40);
-                    text.setAttribute('x', 500);
-                    text.setAttribute('y', 690);
-                    text.setAttribute('font-size', '12');
-                }
-            }
-
-            // Standard viewBox
-            svg.setAttribute('viewBox', '0 0 1000 1000');
-            svg.setAttribute('preserveAspectRatio', 'xMidYMid slice');
-
-            // Hide HTML name header
-            if (nameHeader) nameHeader.style.display = 'none';
-        }
-    }
-
-    setupZoomSlider() {
-        const sliderHandle = document.getElementById('zoom-slider-handle');
-        const sliderBar = document.getElementById('zoom-bar-fill');
-        const touchArea = document.getElementById('zoom-slider-touch-area');
-        if (!sliderHandle || !sliderBar) return;
-
-        // Detect mobile and enable larger touch area
-        const isMobile = window.innerWidth < 768;
-        if (isMobile && touchArea) {
-            touchArea.style.pointerEvents = 'all'; // Enable touch area on mobile
-            touchArea.setAttribute('width', '30'); // Wider touch area
-        }
-
-        let isDragging = false;
-
-        const updateZoomFromSlider = (clientX) => {
-            this.targetZoom = null; // Cancel any zoom animation
-
-            // Get SVG coordinates
-            const svg = document.getElementById('ui-overlay');
-            const pt = svg.createSVGPoint();
-            pt.x = clientX;
-            pt.y = 0;
-            const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
-
-            // Get actual slider track bounds (accounting for any transforms)
-            const sliderTrack = sliderBar.parentElement.querySelector('rect[x="305"]');
-            if (!sliderTrack) return;
-
-            const trackX = parseFloat(sliderTrack.getAttribute('x'));
-            const trackWidth = parseFloat(sliderTrack.getAttribute('width'));
-
-            // Check if parent has transform
-            const zoomDisplay = document.querySelector('.zoom-display');
-            let transformX = 0;
-            if (zoomDisplay && zoomDisplay.hasAttribute('transform')) {
-                const transform = zoomDisplay.getAttribute('transform');
-                const match = transform.match(/translate\(([^,]+),/);
-                if (match) transformX = parseFloat(match[1]);
-            }
-
-            const sliderMinX = trackX + transformX;
-            const sliderMaxX = trackX + trackWidth + transformX;
-            const sliderTrackWidth = trackWidth;
-
-            // Clamp to slider bounds
-            let newX = Math.max(sliderMinX, Math.min(sliderMaxX, svgP.x));
-
-            // Calculate position as percentage (0 to 1)
-            const percent = (newX - sliderMinX) / sliderTrackWidth;
-
-            // Map to zoom range (minZoom to maxZoom)
-            const newZoom = this.minZoom + percent * (this.maxZoom - this.minZoom);
-
-            // Apply mobile adjustment to maintain closer zoom
-            const isMobile = window.innerWidth < 768;
-            this.camera.position.z = isMobile ? newZoom * this.mobileZoomMultiplier : newZoom;
-
-            // Update slider position
-            this.updateSliderPosition();
-        };
-
-        const handleMouseDown = (e) => {
-            if (!this.userInteractionEnabled) return; // Respect interaction lock
-            e.preventDefault();
-            e.stopPropagation(); // Prevent globe rotation
-            isDragging = true;
-            sliderHandle.style.cursor = 'grabbing';
-            updateZoomFromSlider(e.clientX);
-        };
-
-        const handleMouseMove = (e) => {
-            if (!isDragging) return;
-            e.preventDefault();
-            e.stopPropagation(); // Prevent globe rotation
-            updateZoomFromSlider(e.clientX);
-        };
-
-        const handleMouseUp = () => {
-            isDragging = false;
-            sliderHandle.style.cursor = 'grab';
-        };
-
-        // Mouse events (on both handle and touch area)
-        sliderHandle.addEventListener('mousedown', handleMouseDown);
-        if (touchArea) touchArea.addEventListener('mousedown', handleMouseDown);
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-
-        // Touch events (on both handle and touch area)
-        const handleTouchStart = (e) => {
-            if (!this.userInteractionEnabled) return; // Respect interaction lock
-            e.preventDefault();
-            e.stopPropagation();
-            isDragging = true;
-            if (e.touches.length > 0) {
-                updateZoomFromSlider(e.touches[0].clientX);
-            }
-        };
-
-        sliderHandle.addEventListener('touchstart', handleTouchStart);
-        if (touchArea) touchArea.addEventListener('touchstart', handleTouchStart);
-
-        document.addEventListener('touchmove', (e) => {
-            if (!isDragging) return;
-            e.preventDefault();
-            e.stopPropagation();
-            if (e.touches.length > 0) {
-                updateZoomFromSlider(e.touches[0].clientX);
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+                geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 4));
+                tri.tracerLine = new THREE.Line(geo, new THREE.LineBasicMaterial({
+                    vertexColors: true, transparent: true, opacity: 0.6,
+                }));
+                this.globe.add(tri.tracerLine);
             }
         });
-
-        document.addEventListener('touchend', () => {
-            isDragging = false;
-        });
-
-        // Store isDragging state for use in other methods
-        this.isSliderDragging = () => isDragging;
     }
 
-    updateSliderPosition() {
-        const sliderHandle = document.getElementById('zoom-slider-handle');
-        const sliderBar = document.getElementById('zoom-bar-fill');
-        const touchArea = document.getElementById('zoom-slider-touch-area');
-        if (!sliderHandle || !sliderBar) return;
+    // ── Resize ─────────────────────────────────────────────
 
-        const sliderMinX = 305;
-        const sliderMaxX = 425;
-        const sliderTrackWidth = sliderMaxX - sliderMinX;
-
-        // Handle width (visual size)
-        const handleWidth = 10;
-
-        // Calculate position based on current zoom
-        const zoomRange = this.maxZoom - this.minZoom;
-        const zoomPercent = (this.camera.position.z - this.minZoom) / zoomRange;
-        const clampedPercent = Math.max(0, Math.min(1, zoomPercent));
-
-        // Update handle position (centered on the track)
-        const handleX = sliderMinX + (clampedPercent * sliderTrackWidth) - (handleWidth / 2);
-        sliderHandle.setAttribute('x', handleX.toFixed(1));
-
-        // Update touch area position (if it exists, center it on the handle)
-        if (touchArea) {
-            const touchWidth = parseFloat(touchArea.getAttribute('width')) || 10;
-            const touchX = sliderMinX + (clampedPercent * sliderTrackWidth) - (touchWidth / 2);
-            touchArea.setAttribute('x', touchX.toFixed(1));
-        }
-
-        // Update bar fill width
-        const barWidth = clampedPercent * sliderTrackWidth;
-        sliderBar.setAttribute('width', barWidth.toFixed(1));
-    }
-
-    enterViewMode() {
-        this.isViewMode = true;
-        this.rotationEnabled = true; // Keep auto-rotation enabled
-        this.userInteractionEnabled = false; // Disable user input
-        this.savedZoom = this.camera.position.z; // Save current zoom to return to
-        this.targetZoom = 0.75; // Zoom to size 0.75
-
-        // Create/show "COMING SOON!" text in center
-        const svg = document.getElementById('ui-overlay');
-        let comingSoonText = document.getElementById('coming-soon-text');
-        if (!comingSoonText && svg) {
-            // Create text element if it doesn't exist
-            comingSoonText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            comingSoonText.setAttribute('id', 'coming-soon-text');
-            comingSoonText.setAttribute('x', '500');
-            comingSoonText.setAttribute('y', '480');
-            comingSoonText.setAttribute('fill', '#FFA234');
-            comingSoonText.setAttribute('font-family', "'Departure Mono', monospace");
-            comingSoonText.setAttribute('font-size', '48');
-            comingSoonText.setAttribute('font-weight', 'bold');
-            comingSoonText.setAttribute('text-anchor', 'middle');
-            comingSoonText.setAttribute('opacity', '0.9');
-
-            // Create two tspan elements for two lines
-            const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-            line1.setAttribute('x', '500');
-            line1.setAttribute('dy', '0');
-            line1.textContent = 'COMING';
-
-            const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-            line2.setAttribute('x', '500');
-            line2.setAttribute('dy', '60');
-            line2.textContent = 'SOON!';
-
-            comingSoonText.appendChild(line1);
-            comingSoonText.appendChild(line2);
-            svg.appendChild(comingSoonText);
-        }
-        if (comingSoonText) comingSoonText.style.display = 'block';
-
-        // Hide UI elements
-        const navButtons = document.getElementById('nav-buttons');
-        const nameDisplay = document.getElementById('name-display');
-        const zoomIndicator = document.getElementById('zoom-indicator');
-        const velocityIndicator = document.getElementById('velocity-indicator');
-        const centerReticle = document.getElementById('center-reticle');
-        const sideIndicators = document.getElementById('side-indicators');
-
-        if (navButtons) navButtons.style.display = 'none';
-        if (nameDisplay) nameDisplay.style.display = 'none';
-        if (zoomIndicator) zoomIndicator.style.display = 'none';
-        if (velocityIndicator) velocityIndicator.style.display = 'none';
-        if (centerReticle) centerReticle.style.display = 'none';
-        if (sideIndicators) sideIndicators.style.display = 'none';
-
-        // Hide flying triangles
-        if (this.flyingTriangles) {
-            this.flyingTriangles.forEach(tri => {
-                if (tri.mesh) tri.mesh.visible = false;
-            });
-        }
-
-        // Show return button
-        const returnBtn = document.getElementById('return-btn');
-        if (returnBtn) returnBtn.style.display = 'block';
-    }
-
-    exitViewMode() {
-        this.isViewMode = false;
-        this.rotationEnabled = true;
-        this.userInteractionEnabled = true; // Re-enable user input
-        this.targetZoom = this.savedZoom || this.baseCameraDistance; // Return to saved zoom or base
-
-        // Hide "COMING SOON!" text
-        const comingSoonText = document.getElementById('coming-soon-text');
-        if (comingSoonText) comingSoonText.style.display = 'none';
-
-        // Show UI elements
-        const navButtons = document.getElementById('nav-buttons');
-        const nameDisplay = document.getElementById('name-display');
-        const zoomIndicator = document.getElementById('zoom-indicator');
-        const velocityIndicator = document.getElementById('velocity-indicator');
-        const centerReticle = document.getElementById('center-reticle');
-        const sideIndicators = document.getElementById('side-indicators');
-
-        if (navButtons) navButtons.style.display = 'block';
-        if (nameDisplay) nameDisplay.style.display = 'block';
-        if (zoomIndicator) zoomIndicator.style.display = 'block';
-        if (velocityIndicator) velocityIndicator.style.display = 'block';
-        if (centerReticle) centerReticle.style.display = 'block';
-        if (sideIndicators) sideIndicators.style.display = 'block';
-
-        // Show flying triangles
-        if (this.flyingTriangles) {
-            this.flyingTriangles.forEach(tri => {
-                if (tri.mesh) tri.mesh.visible = true;
-            });
-        }
-
-        // Hide return button
-        const returnBtn = document.getElementById('return-btn');
-        if (returnBtn) returnBtn.style.display = 'none';
-    }
-
-    updateCameraForViewport() {
-        // Get the actual rendered size of the UI square
-        const svg = document.getElementById('ui-overlay');
-        if (!svg) return;
-
-        // Get SVG dimensions
-        const svgRect = svg.getBoundingClientRect();
-
-        // The square is 450/1000 = 45% of the SVG viewBox
-        // Calculate actual pixel size of the square
-        const squareSize = Math.min(svgRect.width, svgRect.height) * 0.45;
-
-        // Reference size: 540px square (desktop baseline)
-        const referenceSize = 540;
-
-        // Scale factor: larger square = closer camera (smaller scale), smaller square = further camera (larger scale)
-        const scaleFactor = referenceSize / squareSize;
-
-        // Store current zoom offset from base (if baseCameraDistance exists, meaning this isn't first call)
-        const currentOffset = (this.camera && this.baseCameraDistance)
-            ? this.camera.position.z - this.baseCameraDistance
-            : 0;
-
-        // Update base distance with scale factor
-        this.baseCameraDistance = this.initialCameraDistance * scaleFactor;
-
-        // Reapply offset
-        if (this.camera) {
-            this.camera.position.z = this.baseCameraDistance + currentOffset;
-        }
-
-        // Update zoom bounds based on scale
-        this.minZoom = this.initialMinZoom * scaleFactor;
-        this.maxZoom = this.initialMaxZoom * scaleFactor;
-
-        // Clamp camera to new bounds
-        if (this.camera) {
-            this.camera.position.z = Math.max(this.minZoom, Math.min(this.maxZoom, this.camera.position.z));
-
-            // Mobile adjustments: move sphere up and make it larger
-            const isMobile = window.innerWidth < 768;
-            if (isMobile) {
-                this.camera.position.y = 0;
-                // Make sphere appear larger by moving camera closer
-                this.camera.position.z *= this.mobileZoomMultiplier;
-            } else {
-                this.camera.position.y = 0; // Reset to center on desktop
-            }
-        }
-    }
-
+    /** Call after viewport or HUD size changes */
     handleResize() {
-        const width = this.container.clientWidth;
-        const height = this.container.clientHeight;
-
-        this.camera.aspect = width / height;
+        // Always use viewport dimensions — renderer.setSize overwrites the
+        // canvas inline style, which breaks CSS-based sizing on later reads.
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
-
-        this.renderer.setSize(width, height);
-
-        // Update camera distance for new viewport size
-        this.updateCameraForViewport();
-
-        // Adjust UI positioning for mobile
-        this.adjustUIForMobile();
+        this.renderer.setSize(w, h);
     }
 }
-
-// Initialize globe when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    new WireframeGlobe('globe-container');
-});
-

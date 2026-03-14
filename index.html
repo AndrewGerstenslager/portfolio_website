@@ -2,149 +2,120 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portfolio - Globe</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
+    <title>Andrew Gerstenslager</title>
     <link rel="icon" type="image/x-icon" href="assets/favicon/AG_Favicon.ico">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Departure+Mono&display=swap" rel="stylesheet">
     <script type="module" src="/src/main.js"></script>
 </head>
-<body class="bg-[#0a0e27] overflow-hidden w-screen h-screen flex flex-col">
+<body class="bg-bg text-brand font-mono overflow-hidden w-screen h-[100dvh] flex flex-col select-none">
 
-    <!-- Name header: visible on mobile only (CSS controls display) -->
-    <div id="name-header">
-        <div class="name-lines name-lines-left inline-flex gap-1.5 items-center align-middle">
-            <span class="line line-1"></span>
-            <span class="line line-2"></span>
-            <span class="line line-3"></span>
-            <span class="line line-4"></span>
-            <span class="line line-5"></span>
-        </div>
-        <h1 class="name-text font-[family-name:var(--font-mono)] text-[#FFA234] text-sm font-normal opacity-80 tracking-wide px-2.5 m-0">
-            ANDREW GERSTENSLAGER
-        </h1>
-        <div class="name-lines name-lines-right inline-flex gap-1.5 items-center align-middle">
-            <span class="line line-5"></span>
-            <span class="line line-4"></span>
-            <span class="line line-3"></span>
-            <span class="line line-2"></span>
-            <span class="line line-1"></span>
-        </div>
-    </div>
+    <!-- Three.js canvas — fills entire viewport behind everything -->
+    <canvas id="globe-canvas" class="fixed inset-0 w-full h-full z-0"></canvas>
 
-    <!-- Globe fills all available space -->
-    <div class="globe-container w-full flex-1 relative flex items-center justify-center" id="globe-container">
-        <canvas id="globe-canvas" class="w-full h-full block"></canvas>
+    <!-- UI layer — sits on top of canvas -->
+    <div id="ui-layer" class="relative z-10 w-full h-full flex items-center justify-center pointer-events-none">
 
-        <svg id="ui-overlay"
-             class="ui-overlay absolute inset-0 w-full h-full pointer-events-none z-10"
-             viewBox="0 0 1000 1000"
-             preserveAspectRatio="xMidYMid meet">
+        <!-- HUD wrapper: sized by JS, name + box + buttons all anchored here -->
+        <div id="hud-wrapper" class="relative">
 
-            <!-- Name display (desktop only, hidden on mobile via CSS) -->
-            <g id="name-display" class="name-display">
-                <text x="500" y="262" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="16" text-anchor="middle" opacity="0.8">ANDREW GERSTENSLAGER</text>
-                <line x1="245" y1="250" x2="245" y2="268" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="265" y1="252" x2="265" y2="266" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="285" y1="253" x2="285" y2="265" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="305" y1="254" x2="305" y2="264" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="325" y1="255" x2="325" y2="263" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="675" y1="255" x2="675" y2="263" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="695" y1="254" x2="695" y2="264" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="715" y1="253" x2="715" y2="265" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="735" y1="252" x2="735" y2="266" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="755" y1="250" x2="755" y2="268" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-            </g>
+            <!-- ─── Name: anchored above the box ─── -->
+            <header id="name-header" class="absolute bottom-full left-0 right-0 flex items-center justify-center gap-2 pb-1">
+                <div class="name-lines flex gap-2 items-end" aria-hidden="true">
+                    <span class="line" style="height:52px"></span>
+                    <span class="line" style="height:41px"></span>
+                    <span class="line" style="height:30px"></span>
+                    <span class="line" style="height:19px"></span>
+                    <span class="line" style="height:8px"></span>
+                </div>
+                <h1 class="text-3xl md:text-5xl tracking-widest opacity-90 whitespace-nowrap px-6">
+                    ANDREW GERSTENSLAGER
+                </h1>
+                <div class="name-lines flex gap-2 items-end" aria-hidden="true">
+                    <span class="line" style="height:8px"></span>
+                    <span class="line" style="height:19px"></span>
+                    <span class="line" style="height:30px"></span>
+                    <span class="line" style="height:41px"></span>
+                    <span class="line" style="height:52px"></span>
+                </div>
+            </header>
 
-            <!-- Border frame -->
-            <rect x="275" y="275" width="450" height="450" fill="none" stroke="#FFA234" stroke-width="6" opacity="0.4"/>
-            <rect x="282" y="282" width="436" height="436" fill="none" stroke="#FFA234" stroke-width="1" opacity="0.3"/>
+            <!-- ─── The box (HUD) ─── -->
+            <div id="hud" class="relative">
 
-            <!-- Center reticle -->
-            <g id="center-reticle" class="center-reticle">
-                <circle cx="500" cy="500" r="150" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="500" y1="350" x2="500" y2="335" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="650" y1="500" x2="665" y2="500" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="500" y1="650" x2="500" y2="665" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="350" y1="500" x2="335" y2="500" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="606" y1="394" x2="617" y2="383" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="606" y1="606" x2="617" y2="617" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="394" y1="606" x2="383" y2="617" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                <line x1="394" y1="394" x2="383" y2="383" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-            </g>
+                <!-- Decorative SVG frame -->
+                <svg id="deco-frame" class="absolute inset-0 w-full h-full"
+                     viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+                    <rect x="50" y="50" width="900" height="900" fill="none" stroke="currentColor" stroke-width="5" opacity="0.4"/>
+                    <rect x="60" y="60" width="880" height="880" fill="none" stroke="currentColor" stroke-width="1" opacity="0.25"/>
+                    <circle cx="500" cy="500" r="280" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
+                    <line x1="500" y1="220" x2="500" y2="195" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
+                    <line x1="780" y1="500" x2="805" y2="500" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
+                    <line x1="500" y1="780" x2="500" y2="805" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
+                    <line x1="220" y1="500" x2="195" y2="500" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
+                    <line x1="698" y1="302" x2="716" y2="284" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
+                    <line x1="698" y1="698" x2="716" y2="716" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
+                    <line x1="302" y1="698" x2="284" y2="716" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
+                    <line x1="302" y1="302" x2="284" y2="284" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
+                    <g opacity="0.35">
+                        <polyline points="160,380 160,460 180,500 160,540 160,620" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                        <line x1="160" y1="380" x2="144" y2="364" stroke="currentColor" stroke-width="1.2"/>
+                        <line x1="160" y1="620" x2="144" y2="636" stroke="currentColor" stroke-width="1.2"/>
+                    </g>
+                    <g opacity="0.35">
+                        <polyline points="840,380 840,460 820,500 840,540 840,620" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                        <line x1="840" y1="380" x2="856" y2="364" stroke="currentColor" stroke-width="1.2"/>
+                        <line x1="840" y1="620" x2="856" y2="636" stroke="currentColor" stroke-width="1.2"/>
+                    </g>
+                </svg>
 
-            <!-- Side indicators -->
-            <g id="side-indicators" class="side-indicators">
-                <g class="left-indicator">
-                    <line x1="330" y1="400" x2="330" y2="460" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
-                    <line x1="330" y1="460" x2="345" y2="500" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
-                    <line x1="345" y1="500" x2="330" y2="540" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
-                    <line x1="330" y1="540" x2="330" y2="600" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
-                    <line x1="330" y1="400" x2="318" y2="388" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
-                    <line x1="330" y1="600" x2="318" y2="612" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
-                </g>
-                <g class="right-indicator">
-                    <line x1="670" y1="400" x2="670" y2="460" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
-                    <line x1="670" y1="460" x2="655" y2="500" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
-                    <line x1="655" y1="500" x2="670" y2="540" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
-                    <line x1="670" y1="540" x2="670" y2="600" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
-                    <line x1="670" y1="400" x2="682" y2="388" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
-                    <line x1="670" y1="600" x2="682" y2="612" stroke="#FFA234" stroke-width="1" opacity="0.5"/>
-                </g>
-            </g>
+                <!-- Zoom indicator -->
+                <div id="zoom-indicator" class="indicator-panel" style="top:7%; left:7%">
+                    <div class="indicator-bracket">
+                        <span class="indicator-label">ZOOM</span>
+                        <div class="indicator-bar-track">
+                            <div id="zoom-bar-fill" class="indicator-bar-fill"></div>
+                            <div id="zoom-slider-handle" class="indicator-slider-handle pointer-events-auto"
+                                 role="slider" aria-label="Zoom level" aria-valuemin="0" aria-valuemax="100" tabindex="0"></div>
+                        </div>
+                    </div>
+                </div>
 
-            <!-- Zoom indicator -->
-            <g id="zoom-indicator" class="zoom-indicator">
-                <g class="zoom-display">
-                    <path d="M 295 305 L 295 290 L 310 290" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                    <path d="M 420 290 L 435 290 L 435 305" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                    <path d="M 295 340 L 295 355 L 310 355" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                    <path d="M 435 340 L 435 355 L 420 355" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                    <text x="365" y="305" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="11" text-anchor="middle" opacity="0.7">ZOOM</text>
-                    <rect x="305" y="322" width="120" height="8" fill="none" stroke="#FFA234" stroke-width="1" opacity="0.3"/>
-                    <rect id="zoom-bar-fill" x="305" y="322" width="60" height="8" fill="#FFA234" opacity="0.6"/>
-                    <rect id="zoom-slider-handle" class="zoom-slider-handle" x="360" y="318" width="10" height="16" fill="#FFFFFF" opacity="0.9" style="cursor: grab;"/>
-                    <rect id="zoom-slider-touch-area" class="zoom-slider-touch-area" x="360" y="290" width="10" height="65" fill="transparent" opacity="0" style="cursor: grab; pointer-events: none;"/>
-                </g>
-            </g>
+                <!-- Velocity indicator -->
+                <div id="velocity-indicator" class="indicator-panel" style="top:7%; right:7%">
+                    <div class="indicator-bracket">
+                        <span class="indicator-label">VELOCITY</span>
+                        <div class="indicator-bar-track">
+                            <div id="velocity-bar-fill" class="indicator-bar-fill"></div>
+                        </div>
+                        <span id="velocity-value" class="indicator-value">0.00</span>
+                    </div>
+                </div>
 
-            <!-- Velocity indicator -->
-            <g id="velocity-indicator" class="velocity-indicator">
-                <g class="velocity-display">
-                    <path d="M 565 305 L 565 290 L 580 290" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                    <path d="M 690 290 L 705 290 L 705 305" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                    <path d="M 565 340 L 565 355 L 580 355" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                    <path d="M 705 340 L 705 355 L 690 355" fill="none" stroke="#FFA234" stroke-width="1.5" opacity="0.6"/>
-                    <text x="635" y="305" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="10" text-anchor="middle" opacity="0.7">VELOCITY</text>
-                    <rect x="580" y="317" width="110" height="8" fill="none" stroke="#FFA234" stroke-width="1" opacity="0.3"/>
-                    <rect id="velocity-bar-fill" class="velocity-bar-fill" x="580" y="317" width="0" height="8" fill="#FFA234" opacity="0.6"/>
-                    <text id="velocity-value" x="635" y="345" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="14" text-anchor="middle" opacity="0.8">0.00</text>
-                </g>
-            </g>
+            </div><!-- /hud -->
 
-            <!-- Bottom navigation -->
-            <g id="nav-buttons" class="nav-buttons">
-                <g class="nav-button" id="about-btn">
-                    <rect x="290" y="665" width="120" height="40" fill="none" stroke="#FFA234" stroke-width="2" opacity="0.6"/>
-                    <text x="350" y="690" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="12" text-anchor="middle" opacity="0.9">ABOUT ME</text>
-                </g>
-                <g class="nav-button" id="portfolio-btn">
-                    <rect x="440" y="665" width="120" height="40" fill="none" stroke="#FFA234" stroke-width="2" opacity="0.6"/>
-                    <text x="500" y="690" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="12" text-anchor="middle" opacity="0.9">PORTFOLIO</text>
-                </g>
-                <g class="nav-button" id="demos-btn">
-                    <rect x="590" y="665" width="120" height="40" fill="none" stroke="#FFA234" stroke-width="2" opacity="0.6"/>
-                    <text x="650" y="690" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="12" text-anchor="middle" opacity="0.9">DEMOS</text>
-                </g>
-            </g>
+            <!-- ─── Buttons: anchored below the box ─── -->
+            <nav id="nav-buttons" class="absolute top-full left-0 right-0 flex flex-col md:flex-row items-stretch md:items-center justify-center gap-2 md:gap-5 pt-1 pointer-events-auto">
+                <button id="about-btn" class="nav-btn">ABOUT ME</button>
+                <button id="portfolio-btn" class="nav-btn">PORTFOLIO</button>
+                <button id="demos-btn" class="nav-btn">DEMOS</button>
+            </nav>
 
             <!-- Return button (hidden by default) -->
-            <g id="return-btn" class="return-button" style="display: none;">
-                <rect x="430" y="665" width="140" height="40" fill="none" stroke="#FFA234" stroke-width="2" opacity="0.6"/>
-                <text x="500" y="690" fill="#FFA234" font-family="'Departure Mono', monospace" font-size="12" text-anchor="middle" opacity="0.9">RETURN</text>
-            </g>
-        </svg>
+            <nav id="return-nav" class="absolute top-full left-0 right-0 hidden items-stretch md:items-center justify-center pt-1 pointer-events-auto">
+                <button id="return-btn" class="nav-btn w-full md:w-auto">RETURN</button>
+            </nav>
+
+        </div><!-- /hud-wrapper -->
+
+        <!-- Coming soon overlay (hidden by default) -->
+        <div id="coming-soon" class="hidden absolute inset-0 flex items-center justify-center pointer-events-none">
+            <p class="text-3xl md:text-5xl font-bold tracking-widest opacity-90 text-center leading-relaxed">
+                COMING<br>SOON!
+            </p>
+        </div>
     </div>
 
 </body>

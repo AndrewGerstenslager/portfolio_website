@@ -1,116 +1,181 @@
 @import "tailwindcss";
 
-/* ── Custom properties ── */
+/* ── Theme tokens ── */
 @theme {
   --color-brand: #FFA234;
   --color-bg: #0a0e27;
   --font-mono: 'Departure Mono', monospace;
 }
 
-/* ── Name header: hidden on desktop, overlaid on mobile ── */
-#name-header {
-  display: none;
-}
-
-@media (max-width: 767px) {
-  #name-header {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 20;
-    padding: 10px 0;
-    background: transparent;
-  }
-
-  .name-text {
-    font-size: 32px;
-    margin: 0 -30px;
-  }
-
-  .name-lines .line {
-    width: 3px;
-  }
-
-  .line-1 { height: 40px; }
-  .line-2 { height: 34px; }
-  .line-3 { height: 28px; }
-  .line-4 { height: 22px; }
-  .line-5 { height: 16px; }
-
-  .globe-container {
-    height: 100vh;
-  }
-
-  .name-display {
-    display: none;
-  }
-}
-
-/* ── Decorative lines beside name ── */
+/* ── Decorative accent lines beside name ── */
 .name-lines .line {
-  display: inline-block;
-  width: 2px;
-  background: #FFA234;
+  display: block;
+  width: 3px;
+  background: var(--color-brand);
+  opacity: 0.7;
+}
+
+@media (min-width: 768px) {
+  .name-lines .line { width: 4px; }
+}
+
+/* ── Decorative SVG frame inherits brand color ── */
+#deco-frame { color: var(--color-brand); }
+
+/* ── Indicator panels (zoom & velocity) ── */
+.indicator-panel {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-brand);
+  z-index: 10;
+}
+
+@media (min-width: 768px) {
+  .indicator-panel { font-size: 20px; }
+}
+
+.indicator-bracket {
+  position: relative;
+  padding: 8px 10px;
+  border: 1.5px solid var(--color-brand);
+  opacity: 0.85;
+}
+
+@media (min-width: 768px) {
+  .indicator-bracket { padding: 12px 16px; }
+}
+
+/* Corner bracket decoration */
+.indicator-bracket::before,
+.indicator-bracket::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: var(--color-brand);
+  border-style: solid;
+  opacity: 0.7;
+}
+.indicator-bracket::before {
+  top: -2px; left: -2px;
+  border-width: 2px 0 0 2px;
+}
+.indicator-bracket::after {
+  bottom: -2px; right: -2px;
+  border-width: 0 2px 2px 0;
+}
+
+.indicator-label {
+  display: block;
+  letter-spacing: 0.1em;
+  opacity: 0.85;
+  margin-bottom: 5px;
+}
+
+.indicator-bar-track {
+  position: relative;
+  width: 90px;
+  height: 8px;
+  border: 1px solid var(--color-brand);
   opacity: 0.6;
 }
 
-.line-1 { height: 24px; }
-.line-2 { height: 20px; }
-.line-3 { height: 16px; }
-.line-4 { height: 12px; }
-.line-5 { height: 8px; }
+@media (min-width: 768px) {
+  .indicator-bar-track {
+    width: 190px;
+    height: 14px;
+  }
+}
 
-/* ── Velocity bar smooth transition ── */
-.velocity-bar-fill {
+.indicator-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 0%;
+  background: var(--color-brand);
+  opacity: 0.7;
   transition: width 0.15s ease-out;
 }
 
-/* ── Zoom slider ── */
-.zoom-slider-handle {
-  pointer-events: all;
-  cursor: grab !important;
-  transition: opacity 0.2s ease;
+.indicator-slider-handle {
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  width: 10px;
+  height: 18px;
+  background: #fff;
+  opacity: 0.9;
+  cursor: grab;
+  touch-action: none;
 }
 
-.zoom-slider-handle:hover { opacity: 1; }
-.zoom-slider-handle:active { cursor: grabbing !important; }
+@media (min-width: 768px) {
+  .indicator-slider-handle {
+    width: 14px;
+    height: 24px;
+    top: -6px;
+  }
+}
 
-/* ── SVG navigation buttons ── */
-.nav-button,
-.return-button {
+/* Enlarged touch target (invisible) */
+.indicator-slider-handle::before {
+  content: '';
+  position: absolute;
+  inset: -14px -18px;
+}
+
+.indicator-slider-handle:active {
+  cursor: grabbing;
+}
+
+.indicator-value {
+  display: block;
+  margin-top: 5px;
+  font-size: 14px;
+  opacity: 0.9;
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .indicator-value { font-size: 26px; margin-top: 8px; }
+}
+
+/* ── Navigation buttons ── */
+.nav-btn {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  letter-spacing: 0.08em;
+  color: var(--color-brand);
+  background: transparent;
+  border: 2.5px solid var(--color-brand);
+  opacity: 0.85;
+  padding: 14px 24px;
+  min-height: 54px;
   cursor: pointer;
-  pointer-events: all;
-  transition: all 0.3s ease;
+  transition: all 0.25s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.nav-button rect,
-.return-button rect {
-  transition: all 0.3s ease;
+@media (min-width: 768px) {
+  .nav-btn {
+    font-size: 28px;
+    padding: 18px 60px;
+    min-height: 68px;
+    border-width: 3px;
+  }
 }
 
-.nav-button text,
-.return-button text {
-  transition: all 0.3s ease;
-}
-
-.nav-button:hover rect,
-.return-button:hover rect {
+.nav-btn:hover,
+.nav-btn:focus-visible {
   opacity: 1;
-  fill: #FFA234;
-  fill-opacity: 0.1;
+  background: rgba(255, 162, 52, 0.1);
+  color: #FFD700;
+  border-color: #FFD700;
+  outline: none;
 }
 
-.nav-button:hover text,
-.return-button:hover text {
-  opacity: 1;
-  fill: #FFD700;
-}
-
-.nav-button:active rect,
-.return-button:active rect {
-  fill-opacity: 0.3;
+.nav-btn:active {
+  background: rgba(255, 162, 52, 0.25);
 }
