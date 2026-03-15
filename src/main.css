@@ -10,13 +10,24 @@
 /* ── Decorative accent lines beside name ── */
 .name-lines .line {
   display: block;
-  width: 3px;
+  width: 2px;
   background: var(--color-brand);
   opacity: 0.7;
 }
 
+.name-lines .line-1 { height: 4px; }
+.name-lines .line-2 { height: 9px; }
+.name-lines .line-3 { height: 14px; }
+.name-lines .line-4 { height: 20px; }
+.name-lines .line-5 { height: 26px; }
+
 @media (min-width: 768px) {
   .name-lines .line { width: 4px; }
+  .name-lines .line-1 { height: 8px; }
+  .name-lines .line-2 { height: 19px; }
+  .name-lines .line-3 { height: 30px; }
+  .name-lines .line-4 { height: 41px; }
+  .name-lines .line-5 { height: 52px; }
 }
 
 /* ── Decorative SVG frame inherits brand color ── */
@@ -145,14 +156,14 @@
 /* ── Navigation buttons ── */
 .nav-btn {
   font-family: var(--font-mono);
-  font-size: 20px;
+  font-size: 13px;
   letter-spacing: 0.08em;
   color: var(--color-brand);
   background: transparent;
-  border: 2.5px solid var(--color-brand);
+  border: 2px solid var(--color-brand);
   opacity: 0.85;
-  padding: 14px 24px;
-  min-height: 54px;
+  padding: 9px 16px;
+  min-height: 44px;
   cursor: pointer;
   transition: all 0.25s ease;
   -webkit-tap-highlight-color: transparent;
