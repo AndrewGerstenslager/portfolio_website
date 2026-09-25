@@ -189,6 +189,8 @@ export class WireframeGlobe {
         this._tLastRender = -1;
         this._firstRenderAt = -1;
         this._dirty = true;
+        this._running = false;
+        this._parked = false;    // reduced motion: loop idled until something marks dirty
         this._fps = 60;
         this._drawCalls = 0;
 
@@ -199,6 +201,7 @@ export class WireframeGlobe {
         this._adaptSum = 0;
         this._adaptWait = 0;
         this._adaptArmed = false;
+        this._adaptTrial = null;          // {tier, mean} while a downgrade is on trial
 
         // ── Picking ──
         this._raycaster = new Raycaster();
@@ -297,7 +300,7 @@ export class WireframeGlobe {
             this._frameTw.start(this._now, duration);
         }
         this._hasFrame = true;
-        this._dirty = true;
+        this._markDirty();
     }
 
     getFrame(out) {
@@ -323,7 +326,7 @@ export class WireframeGlobe {
             this._scanTw.stop();
             this._u.uScanAmt.value = 0;
         }
-        this._dirty = true;
+        this._markDirty();
     }
 
     focus(target, { duration = 1000, pulse = true } = {}) {
@@ -338,7 +341,7 @@ export class WireframeGlobe {
                 }
                 this._fadeMarker(0, this._reduced ? 0 : 200, 0);
             }
-            this._dirty = true;
+            this._markDirty();
             return null;
         }
         const lat = Number(target.lat), lon = Number(target.lon);
@@ -359,7 +362,7 @@ export class WireframeGlobe {
         const dur = this._startOrient(this._reduced ? 0 : Math.max(0, Number(duration) || 0), !!pulse, 'focus');
         if (!same) this._markerAlpha = 0;
         this._fadeMarker(1, dur > 0 ? 300 : 0, same ? 0 : dur * 0.7);
-        this._dirty = true;
+        this._markDirty();
 
         vec3ToLatLon(n, this._ll);
         return { node, lat: round1(this._ll.lat), lon: round1(this._ll.lon) };
@@ -383,7 +386,7 @@ export class WireframeGlobe {
         }
         this._pulseTw.start(this._now, PULSE_MS);
         this._markerPingAt = this._time;
-        this._dirty = true;
+        this._markDirty();
     }
 
     playIntro({ duration = 1100 } = {}) {
@@ -401,7 +404,7 @@ export class WireframeGlobe {
             this._tracers.resetTrails();
         }
         this._applyIntroValues();
-        this._dirty = true;
+        this._markDirty();
     }
 
     // ── Public API: motion ─────────────────────────────
@@ -421,19 +424,22 @@ export class WireframeGlobe {
             this._dragRate = 0;
         }
         this._lastRotateAt = now;
-        this._dirty = true;
+        this._markDirty();
     }
 
     setAngularVelocity(v) {
         this._vel.copy(v);
         const len = this._vel.length();
         if (len > MAX_OMEGA) this._vel.multiplyScalar(MAX_OMEGA / len);
-        // A real impulse takes over from an in-flight focus/reset turn
-        if (len > 1e-6 && this._orientTw.active) {
-            this._orientTw.stop();
-            this._orientPulse = false;
+        if (len > 1e-6) {
+            this._lastRotateAt = -Infinity;   // a fling/impulse ends the drag hold: coast from the next frame
+            // A real impulse takes over from an in-flight focus/reset turn
+            if (this._orientTw.active) {
+                this._orientTw.stop();
+                this._orientPulse = false;
+            }
         }
-        this._dirty = true;
+        this._markDirty();
     }
 
     setZoom(value) {
@@ -441,7 +447,7 @@ export class WireframeGlobe {
         if (!Number.isFinite(z)) return;
         this._zoomTarget = MathUtils.clamp(z, ZOOM_MIN, ZOOM_MAX);
         if (this._reduced) this._zoomCur = this._zoomTarget;
-        this._dirty = true;
+        this._markDirty();
     }
 
     getZoom() {
@@ -459,7 +465,7 @@ export class WireframeGlobe {
         if (this._reduced) this._zoomCur = 1;
         this._facingQuat(latLonToVec3(HOME_LAT, HOME_LON, _v0), this._qTo);
         this._startOrient(this._reduced ? 0 : 600, false, 'reset');
-        this._dirty = true;
+        this._markDirty();
     }
 
     setPointer(x, y) {
@@ -516,7 +522,7 @@ export class WireframeGlobe {
         } else {
             this._tracers.resetTrails();
         }
-        this._dirty = true;
+        this._markDirty();
     }
 
     setOption(name, value) {
@@ -537,17 +543,25 @@ export class WireframeGlobe {
             }
             default: return;
         }
-        this._dirty = true;
+        this._markDirty();
     }
 
     setFrameCap(fps) {
         const f = Number(fps);
-        this._cap = Number.isFinite(f) && f > 0 ? f : 0;
+        const cap = Number.isFinite(f) && f > 0 ? f : 0;
+        if (cap === this._cap) return;
+        this._cap = cap;
+        // Samples taken under the old cap would be judged against the new limit
+        this._adaptBuf.fill(0);
+        this._adaptSum = 0;
+        this._adaptCount = 0;
+        this._adaptIdx = 0;
+        this._adaptTrial = null;
     }
 
     getTelemetry(out) {
         const holding = performance.now() - this._lastRotateAt < 100;
-        out.omegaDegPerSec = (holding ? this._dragRate : this._vel.length()) * (180 / Math.PI);
+        out.omegaDegPerSec = (holding ? this._dragRate : this._angularVelocity(_v3).length()) * (180 / Math.PI);
         this._facingLocal(_v2);
         vec3ToLatLon(_v2, this._ll);
         out.facingLat = this._ll.lat;
@@ -571,10 +585,14 @@ export class WireframeGlobe {
     // ── Public API: lifecycle ──────────────────────────
 
     start() {
+        this._running = true;
+        this._parked = false;
         this._renderer.setAnimationLoop(this._tick);
     }
 
     stop() {
+        this._running = false;
+        this._parked = false;
         this._renderer.setAnimationLoop(null);
         this._tLast = -1;
         this._tLastRender = -1;
@@ -612,7 +630,15 @@ export class WireframeGlobe {
         if (motion) this._time += dt;
 
         const animating = this._update(dt, realDt, motion);
-        if (!motion && !this._dirty && !animating) return;
+        if (!motion && !this._dirty && !animating) {
+            // Keep ticking through the 100 ms drag hold, or a release fling never starts coasting
+            if (performance.now() - this._lastRotateAt < 100) return;
+            this._parked = true;
+            this._tLast = -1;   // no elapsed-time spike on wake
+            // three.js re-requests the next frame after this callback returns, so park from a microtask
+            queueMicrotask(() => { if (this._parked) this._renderer.setAnimationLoop(null); });
+            return;
+        }
 
         this._dirty = false;
         this._tLastRender = t;
@@ -879,7 +905,7 @@ export class WireframeGlobe {
                 this._composer.setSize(this._w, this._h);
             }
         }
-        this._dirty = true;
+        this._markDirty();
     }
 
     _buildComposer(samples) {
@@ -918,7 +944,8 @@ export class WireframeGlobe {
     }
 
     _sampleAdaptive(ms) {
-        if (!this._adaptive || this._reduced || this._tier === 'low' || this._introPending) return;
+        if (!this._adaptive || this._reduced || this._introPending) return;
+        if (this._tier === 'low' && !this._adaptTrial) return;
         if (!this._adaptArmed) {
             // 120 frames after a played intro, otherwise 2 s after the first render
             if (this._introEndedAt >= 0) {
@@ -939,15 +966,28 @@ export class WireframeGlobe {
         if (this._adaptCount < ADAPT_FRAMES) this._adaptCount++;
         if (this._adaptCount < ADAPT_FRAMES) return;
 
+        const mean = this._adaptSum / ADAPT_FRAMES;
+        const trial = this._adaptTrial;
+        this._adaptTrial = null;
+        if (trial && mean > trial.mean * 0.85) {
+            // The drop bought no frame rate: the cadence is set outside the GPU
+            // (Low Power Mode / Energy Saver 30 Hz rAF). Undo it and stop adapting.
+            this._adaptive = false;
+            this._setTier(trial.tier);
+            return;
+        }
         const limit = this._cap > 0 ? Math.max(ADAPT_LIMIT_MS, 1000 / this._cap + 8) : ADAPT_LIMIT_MS;
-        if (this._adaptSum / ADAPT_FRAMES > limit) {
+        if (mean > limit) {
             const next = TIER_ORDER[TIER_ORDER.indexOf(this._tier) + 1];
             buf.fill(0);
             this._adaptSum = 0;
             this._adaptCount = 0;
             this._adaptIdx = 0;
             this._adaptWait = ADAPT_FRAMES;
-            if (next) this._setTier(next);
+            if (next) {
+                this._adaptTrial = { tier: this._tier, mean };
+                this._setTier(next);
+            }
         }
     }
 
@@ -1055,11 +1095,20 @@ export class WireframeGlobe {
         g.quaternion.setFromUnitVectors(_v1.set(0, 0, 1), n);
     }
 
+    /** Mark the scene for a render; wakes a loop parked under reduced motion */
+    _markDirty() {
+        this._dirty = true;
+        if (this._parked && this._running) {
+            this._parked = false;
+            this._renderer.setAnimationLoop(this._tick);
+        }
+    }
+
     _fadeMarker(to, duration, delay) {
         this._markerFrom = this._markerAlpha;
         this._markerTo = to;
         this._markerTw.start(this._now, duration, delay);
         if (!this._markerTw.active) this._markerAlpha = to;
-        this._dirty = true;
+        this._markDirty();
     }
 }

@@ -175,7 +175,7 @@ export class UIController {
         if (this._tick % 5 === 0) {
             const stats = document.getElementById('lab-stats');
             if (stats && !this.html.classList.contains('no-webgl') && stats.offsetParent !== null) {
-                this._set(stats, `TIER\u00a0${tier} · ${Math.round(t.fps || 0)}\u00a0FPS · ${t.drawCalls ?? 0}\u00a0DRAW\u00a0CALLS`);
+                this._set(stats, `TIER\u00a0${tier} ·\u00a0${Math.round(t.fps || 0)}\u00a0FPS ·\u00a0${t.drawCalls ?? 0}\u00a0DRAW\u00a0CALLS`);
             }
         }
         this._tick++;

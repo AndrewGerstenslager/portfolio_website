@@ -386,7 +386,8 @@ function renderLab(demo, ctx) {
     const switches = el('div', { class: 'lab-switches' },
         labSwitch('bloom', 'Bloom', ctx, offline),
         labSwitch('rings', 'Orbital ring', ctx, offline),
-        labSwitch('tracers', 'Surface tracks', ctx, offline));
+        labSwitch('tracers', 'Surface tracks', ctx, offline),
+        labSwitch('keys', 'Key shortcuts', ctx, false));
 
     const actions = el('div', { class: 'lab-actions' },
         el('button', { class: 'lab-btn', attrs: { type: 'button', disabled: offline },
@@ -395,7 +396,7 @@ function renderLab(demo, ctx) {
             on: { click: () => ctx.onLab('reset') } }, el('span', { attrs: aria, text: '■ ' }), 'Reset view'));
 
     const stats = el('p', { class: 'lab-stats', attrs: { id: 'lab-stats' },
-        text: offline ? 'RENDERER OFFLINE · STATIC MODE' : 'TIER\u00a0---- · --\u00a0FPS · --\u00a0DRAW\u00a0CALLS' });
+        text: offline ? 'RENDERER OFFLINE ·\u00a0STATIC MODE' : 'TIER\u00a0---- ·\u00a0--\u00a0FPS ·\u00a0--\u00a0DRAW\u00a0CALLS' });
 
     const card = el('article', { class: offline ? 'card lab is-offline' : 'card lab', attrs: { id: 'lab' } },
         el('div', { class: 'lab-info' },

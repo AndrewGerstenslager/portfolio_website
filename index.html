@@ -15,8 +15,13 @@
         // First visit of the session, no deep link, motion allowed → play the boot sequence.
         try {
             if (!sessionStorage.getItem('ag-booted') && !location.hash &&
-                !matchMedia('(prefers-reduced-motion: reduce)').matches)
+                !matchMedia('(prefers-reduced-motion: reduce)').matches) {
                 document.documentElement.dataset.phase = 'boot';
+                // Failsafe: if main.js never starts the boot (chunk failed, init threw), drop the overlay
+                window.__agBootFailsafe = setTimeout(function () {
+                    if (document.documentElement.dataset.phase === 'boot') document.documentElement.dataset.phase = 'ready';
+                }, 4000);
+            }
         } catch (e) {}
     </script>
     <script type="module" src="/src/main.js"></script>

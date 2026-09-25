@@ -54,6 +54,7 @@ let staticMode = false;
 let controls = null;
 let telTimer = 0;
 let introRequested = false;
+let glLost = false;
 
 /** Run a globe call; a runtime fault drops the page to static mode instead of breaking the UI. */
 function withGlobe(fn) {
@@ -92,9 +93,9 @@ function enterStaticMode() {
     const lab = document.getElementById('lab');
     if (lab) {
         lab.classList.add('is-offline');
-        for (const c of lab.querySelectorAll('button, input')) c.disabled = true;
+        for (const c of lab.querySelectorAll('button:not([data-opt="keys"]), input')) c.disabled = true;
         const stats = document.getElementById('lab-stats');
-        if (stats) stats.textContent = 'RENDERER OFFLINE · STATIC MODE';
+        if (stats) stats.textContent = 'RENDERER OFFLINE ·\u00a0STATIC MODE';
     }
 }
 
@@ -138,11 +139,11 @@ function syncViewport() {
 const LAB_KEY = 'ag-lab';
 const LAB_NAMES = { bloom: 'BLOOM', rings: 'ORBITAL RING', tracers: 'SURFACE TRACKS' };
 const labState = (() => {
-    const s = { bloom: true, rings: true, tracers: true, spinRate: 1 };
+    const s = { bloom: true, rings: true, tracers: true, keys: true, spinRate: 1 };
     try {
         const saved = JSON.parse(localStorage.getItem(LAB_KEY) || 'null');
         if (saved && typeof saved === 'object') {
-            for (const k of ['bloom', 'rings', 'tracers']) if (typeof saved[k] === 'boolean') s[k] = saved[k];
+            for (const k of ['bloom', 'rings', 'tracers', 'keys']) if (typeof saved[k] === 'boolean') s[k] = saved[k];
             if (Number.isFinite(saved.spinRate)) s.spinRate = Math.min(Math.max(saved.spinRate, 0), 3);
         }
     } catch { /* storage blocked or corrupt: defaults */ }
@@ -174,6 +175,10 @@ function onLab(action, value) {
             withGlobe((g) => g.setOption(action, !!value));
             ui.log(`${LAB_NAMES[action]} ${value ? 'ON' : 'OFF'}`);
             break;
+        case 'keys':
+            labState.keys = !!value;
+            ui.log(`KEY SHORTCUTS ${value ? 'ON' : 'OFF'}`);
+            break;
         case 'spinRate':
             labState.spinRate = Math.min(Math.max(Number(value) || 0, 0), 3);
             withGlobe((g) => g.setOption('spinRate', labState.spinRate));
@@ -185,14 +190,26 @@ function onLab(action, value) {
             ui.log('IMPULSE APPLIED');
             return;
         case 'reset':
-            withGlobe((g) => g.resetView());
-            ui.setZoomUI(1);
-            ui.log('VIEW RESET');
+            resetView();
             return;
         default:
             return;
     }
     saveLab();
+}
+
+// Inside a file, "reset" re-locks onto the file's target instead of turning it away
+let hotOpenAt = -Infinity;
+function resetView() {
+    // The dblclick that completes a hot-sector click has already opened the file
+    if (performance.now() - hotOpenAt < 600) return;
+    const sec = state.section ? SECTION_BY_ID.get(state.section) : null;
+    withGlobe((g) => {
+        if (sec) { g.setZoom(1); g.focus(sec.target, { pulse: false }); }
+        else g.resetView();
+    });
+    ui.setZoomUI(1);
+    ui.log('VIEW RESET');
 }
 
 // ── 4. Router ──────────────────────────────────────────
@@ -415,7 +432,9 @@ navEl.addEventListener('pointerout', (e) => {
     if (e.relatedTarget?.closest?.('#nav .cmd[data-section]')) return;
     if (btn !== document.activeElement || !btn.matches(':focus-visible')) endPreview();
 });
-navEl.addEventListener('pointerdown', () => endPreview(false));
+// A press only cancels a pending preview; an active one is released by pointerout/focusout,
+// or handed over to the route by the click handler
+navEl.addEventListener('pointerdown', () => { clearTimeout(previewTimer); previewTimer = 0; });
 navEl.addEventListener('focusin', (e) => {
     const btn = e.target.closest('.cmd[data-section]');
     if (btn && !routing && btn.matches(':focus-visible')) schedulePreview(btn.dataset.section);
@@ -426,7 +445,9 @@ navEl.addEventListener('focusout', (e) => {
 
 // ── 7. Keyboard ────────────────────────────────────────
 document.addEventListener('keydown', (e) => {
-    if (e.defaultPrevented || e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.defaultPrevented || e.isComposing || e.metaKey) return;
+    // AltGr (Win: Ctrl+Alt) / Option (mac) is how many layouts type [ and ]: match the produced char
+    if ((e.altKey || e.ctrlKey) && e.key !== '[' && e.key !== ']') return;
     const t = e.target;
     const editing = t instanceof Element && t.matches('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
 
@@ -439,6 +460,7 @@ document.addEventListener('keydown', (e) => {
         return;
     }
     if (editing) return;
+    if (!labState.keys) return;   // character-key shortcuts can be turned off (WCAG 2.1.4)
 
     if (e.key >= '1' && e.key <= '9' && e.key.length === 1) {
         const sec = sections[Number(e.key) - 1];
@@ -518,6 +540,7 @@ function attachCursorTag() {
         if (!sec) return;
         keyboardNav = false;
         lastOpener = null;
+        hotOpenAt = performance.now();
         navigate(`#${sec.id}`);
     });
 }
@@ -569,11 +592,7 @@ function attachControls(GlobeControls) {
                 withGlobe((g) => g.zoomBy(f));
                 if (globe) ui.setZoomUI(globe.getZoom());
             },
-            onReset: () => {
-                withGlobe((g) => g.resetView());
-                ui.setZoomUI(1);
-                ui.log('VIEW RESET');
-            },
+            onReset: resetView,
             onPointer: (x, y) => {
                 pointer = x == null ? null : { x, y };
                 withGlobe((g) => g.setPointer(x, y));
@@ -652,6 +671,22 @@ function attachGlobe([{ WireframeGlobe }, { GlobeControls }]) {
     new ResizeObserver(syncViewport).observe(canvas);
     new ResizeObserver(() => syncFrame(0)).observe(anchor);
     window.addEventListener('resize', syncViewport);
+    // A DPR-only change (window dragged to a display with a different scale) fires neither
+    // 'resize' nor the content-box ResizeObserver
+    const watchDpr = () => matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`)
+        .addEventListener('change', () => { syncViewport(); watchDpr(); }, { once: true });
+    watchDpr();
+
+    // Three swallows context loss (render() just no-ops). If the browser never restores
+    // the context (GPU blocklisted, memory reclaim), fall back to the static plate.
+    let lostTimer = 0;
+    const armLostTimer = () => {
+        clearTimeout(lostTimer);
+        lostTimer = document.hidden ? 0 : setTimeout(() => degrade(new Error('CONTEXT_LOST')), 5000);
+    };
+    canvas.addEventListener('webglcontextlost', () => { if (globe) { glLost = true; armLostTimer(); } });
+    canvas.addEventListener('webglcontextrestored', () => { glLost = false; clearTimeout(lostTimer); lostTimer = 0; });
+    document.addEventListener('visibilitychange', () => { if (glLost && globe) armLostTimer(); });
     withGlobe((gl) => gl.on('tier', ({ tier }) => ui.log(`RENDER TIER → ${String(tier).toUpperCase()}`)));
     startTelemetry();
     telemetryTick();
@@ -699,6 +734,7 @@ if (booting) {
         },
         onDone: () => {},
     });
+    clearTimeout(window.__agBootFailsafe);   // runBoot's own timers now own the phase
 } else {
     html.dataset.phase = 'ready';
 }

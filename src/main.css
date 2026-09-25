@@ -287,7 +287,7 @@
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: calc(-1 * var(--chip-strip, 0px));
     display: flex;
     justify-content: space-between;
     gap: 8px;
@@ -306,7 +306,7 @@
   .drag-hint {
     position: absolute;
     left: 50%;
-    bottom: 5px;
+    bottom: calc(5px - var(--chip-strip, 0px));
     translate: -50% 0;
     font-size: 11px;
     line-height: 14px;
@@ -316,6 +316,11 @@
     transition: opacity 400ms;
   }
   html[data-interacted] .drag-hint { opacity: 0; }
+  @media (max-width: 319px) {
+    .drag-hint { display: none; }                         /* chips + hint need ~317px */
+    .name { font-size: calc((100vw - 2rem) / 9.2); }      /* drop the 1.75rem floor */
+    .btn-link, .link-pending { white-space: normal; }     /* long LAUNCH / PENDING labels */
+  }
 
   /* Cursor tag: node + coordinates at the pointer (fine pointers, home only) */
   .cursor-tag {
@@ -768,6 +773,7 @@
   /* Caret: blinks through the typing, then leaves (every file behaves the same) */
   .panel-title::after {
     content: '▌';
+    content: '▌' / '';      /* decorative: kept out of the heading's accessible name */
     margin-left: .1em;
     color: var(--color-brand);
     vertical-align: bottom;
@@ -874,9 +880,15 @@
     letter-spacing: .04em;
     text-transform: uppercase;
     white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   @media (max-width: 379px) {
     .tab-label { font-size: 11px; letter-spacing: .02em; }
+  }
+  @media (max-width: 319px) {
+    .tab-label { font-size: 10px; letter-spacing: 0; }
   }
   .tab:hover { color: var(--color-brand-hot); background: rgb(255 162 52 / .06); }
   .tab:focus-visible { outline-offset: -3px; }
@@ -1443,7 +1455,7 @@
   .lab-spin .range { grid-column: 1 / -1; }
   .lab-actions {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     margin-top: 6px;
   }
@@ -1453,7 +1465,7 @@
     font-size: 11px;
     letter-spacing: .14em;
     text-transform: uppercase;
-    white-space: nowrap;
+    white-space: normal;
     color: var(--color-brand);
     border: 1px solid var(--color-line-strong);
     cursor: pointer;
@@ -1465,6 +1477,9 @@
     background: rgb(255 162 52 / .08);
   }
   .lab-btn:not(:disabled):active { background: rgb(255 162 52 / .2); }
+
+  /* Owner-supplied strings (emails, URLs, long words) must wrap inside the panel */
+  .prose-p, .comm-val, .card-title, .brief-title, .tl-title, .fact dd, .tag { overflow-wrap: anywhere; }
 
   /* Contact / comms */
   .comms-file { display: grid; gap: 28px; }
@@ -1807,6 +1822,16 @@
   html[data-view="section"] #globe-anchor { --globe-fit: .80; --globe-bezel: 0; --globe-fps: 30; }
   html[data-view="section"] :is(.chips, .drag-hint) { display: none; }
   html[data-view="section"] .corner { display: none; }
+  /* Open file on phones: the sheet hugs its content (long files still scroll inside it) */
+  html[data-view="section"] .panel { align-self: start; max-height: 100%; }
+  /* Clear the name from the top-left corner bracket (phones / tablets; desktop has its own inset) */
+  @media (max-width: 63.99rem) {
+    html[data-view="section"] .ident { padding-top: 6px; }
+  }
+  /* Home: the globe centres in the space above the ω / DRAG / MAG strip (24px chip + 12px gap);
+     the strip itself stays at the bottom of the stage */
+  #globe-anchor { --chip-strip: 36px; bottom: var(--chip-strip); }
+  html[data-view="section"] #globe-anchor { --chip-strip: 0px; }
 
   /* Tall portrait phones: the stage is much taller than wide, so let the globe use it */
   @media (max-width: 47.99rem) and (min-height: 800px) and (orientation: portrait) {
@@ -1931,10 +1956,15 @@
       gap: 20px;
       min-width: 0;
       min-height: 0;
-      opacity: .72;
-      transition: opacity 200ms;
     }
-    .rail:hover { opacity: 1; }
+    /* Recessed look on the non-text parts only: rail text keeps its full-contrast token */
+    .rail .spark { opacity: .72; }
+    /* Static mode: the left rail loses its live readouts, so centring each rail on its own
+       content would stagger them. Both hang from the same line instead (where a centred
+       right rail starts), with the same gap. */
+    html.no-webgl .rail { justify-content: flex-start; }
+    html.no-webgl .rail::before { content: ''; flex: 0 1 max(0px, 50% - 190px); }
+    html.no-webgl .rail-r { gap: 20px; }
     .rail-r { gap: 28px; }
     .log { min-height: 106px; }
 
@@ -1944,7 +1974,7 @@
 
     /* Stage */
     #globe-anchor,
-    html[data-view="section"] #globe-anchor { --globe-fit: .64; --globe-bezel: 1; --globe-fps: 0; }
+    html[data-view="section"] #globe-anchor { --globe-fit: .64; --globe-bezel: 1; --globe-fps: 0; --chip-strip: 0px; }
     .chips,
     .drag-hint { display: none; }
 
@@ -2073,7 +2103,7 @@
         max(10px, env(safe-area-inset-bottom))
         max(16px, env(safe-area-inset-left));
       gap: 10px 16px;
-      grid-template-columns: minmax(312px, 46%) minmax(0, 1fr);
+      grid-template-columns: minmax(min(312px, 100% - 16px), 46%) minmax(0, 1fr);
       grid-template-rows: auto minmax(0, 1fr) auto;
       grid-template-areas:
         "ident stage"
@@ -2104,8 +2134,9 @@
       font-size: 22px;
       letter-spacing: .04em;
     }
-    html[data-view="section"] .name { font-size: 16px; letter-spacing: .04em; white-space: normal; }
-    html[data-view="section"] :is(.name-first, .name-last) { display: block; }
+    /* One line beside the globe column (it wraps only where the column is too narrow) */
+    html[data-view="section"] .name { font-size: clamp(12px, (100vw - 32px) * .0235, 16px); letter-spacing: .04em; white-space: normal; }
+    html[data-view="section"] :is(.name-first, .name-last) { display: inline; }
     .name-row { margin-top: 6px; }
     .tagline {
       display: block;
@@ -2116,8 +2147,9 @@
 
     #globe-anchor { --globe-fit: .70; --globe-bezel: 0; --globe-fps: 0; }
     html[data-view="section"] #globe-anchor { --globe-fit: .80; --globe-bezel: 0; --globe-fps: 30; }
-    .chips { display: flex; justify-content: flex-start; }
-    .chip-mag { display: none; }
+    /* No room for the telemetry strip beside the 2×2 command grid: the globe fills the stage */
+    .chips { display: none; }
+    #globe-anchor { --chip-strip: 0px; }
 
     .nav {
       display: grid;
@@ -2142,6 +2174,15 @@
     .panel-tabs { display: grid; padding-inline: 0; }
     .panel-body { padding: 16px 20px 28px; --fade-top: 16px; }
     .panel-foot { display: none; }
+  }
+
+  /* Short and narrow, i.e. desktop browser zoom of 250% or more (427x240, 320x256):
+     too narrow to put the file beside the globe */
+  @media (orientation: landscape) and (max-height: 540px) and (max-width: 34.99rem) {
+    html[data-view="section"] .shell {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-areas: "ident stage" "panel panel";
+    }
   }
 
   /* ── Short phones & landscape: slimmer file header ── */
