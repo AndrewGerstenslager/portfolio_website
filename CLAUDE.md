@@ -4,65 +4,77 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A retro-futuristic portfolio website with a 3D interactive wireframe globe, styled like a government terminal interface. Hosted on GitHub Pages with a custom domain.
+A retro-futuristic "mission control" portfolio site: a glowing 3D wireframe globe with a live HUD (telemetry rail, system log, clocks) and four command buttons that open content files in a panel. Hosted on GitHub Pages with a custom domain.
 
 **Tech Stack:**
 - **Build Tool**: Vite v7.3.1
-- **Styling**: Tailwind CSS v4.2.1
-- **3D Graphics**: Three.js v0.183.2
-- **HTML5/CSS3/JavaScript** with ES6+ modules
+- **Styling**: Tailwind CSS v4.2.1 (`@theme` tokens + component CSS in `src/main.css`)
+- **3D Graphics**: Three.js v0.183.2, plus the Three.js addons that ship with it (EffectComposer, UnrealBloomPass, OutputPass, BufferGeometryUtils). No other runtime dependencies.
+- **Fonts**: self-hosted Departure Mono (`public/fonts`, SIL OFL) for the UI, plus IBM Plex Mono (Google Fonts) for panel body text
+- **HTML5/CSS3/JavaScript** with ES modules (no framework, no TypeScript)
 - **Deployment**: GitHub Pages with GitHub Actions CI/CD
 
 ## Architecture
 
-Single-page application (SPA) built with Vite, featuring a modular separation of concerns:
+Single-page app built with Vite. Rendering, input, HUD and content are separate modules that talk through small APIs:
 
 ### Module Structure
-- **`src/main.js`** - Entry point. Wires together globe, controls, and UI. Handles navigation button logic.
-- **`src/globe.js`** - `WireframeGlobe` class. Three.js scene only: geometry, materials, shaders, animation loop. No DOM/UI code.
-- **`src/controls.js`** - `GlobeControls` class. Mouse, touch, and wheel input. Emits rotation/zoom via callbacks.
-- **`src/ui.js`** - `UIController` class. Manages HTML-based overlay elements (indicators, buttons, view modes).
-- **`src/main.css`** - Global styles using Tailwind CSS utilities + custom component styles.
+- **`src/main.js`**: entry point and wiring. Hash router (`#about`, `#portfolio/op-02`, …), history, global keyboard, focus management, globe wiring, `ResizeObserver` frame sync, visibility pause, reduced-motion changes, no-WebGL fallback, Globe Lab persistence. Calls the globe **only** through the `WireframeGlobe` public API.
+- **`src/globe.js`** + **`src/globe/{shaders,parts,trail,math}.js`**: `WireframeGlobe`. Three.js rendering only (scene, bloom composer, tiers, lens framing, motion, focus/pulse/intro). No DOM access.
+- **`src/controls.js`**: `GlobeControls`. Pointer Events input (drag, fling, pinch, wheel, double-tap reset, arrow/+/−/R keys on the focused globe). Emits callbacks only.
+- **`src/ui.js`**: `UIController`. The HTML HUD: view state, panel header, telemetry readouts, sparkline, system log, UTC/MET clocks, boot sequence. Never calls the globe.
+- **`src/panel.js`**: renders `content.js` into the panel (tabs, the four files, project detail routes, the Globe Lab). DOM is built with `createElement` + `textContent` only.
+- **`src/content.js`**: **all personal content. It is the only file to edit for content.** Plain data, no DOM, no imports.
+- **`src/main.css`**: fonts, `@theme` tokens, custom variants, and all layout/component CSS (inside `@layer components`).
 
 ### Layout Architecture
-- **Canvas** (`position: fixed, inset: 0`) renders the Three.js globe behind everything
-- **UI layer** (`position: relative, z-10`) sits on top with `pointer-events: none` (only interactive elements opt in)
-- **Flexbox layout** with `header` (name) → `main` (indicators + decorative SVG frame) → `nav` (buttons)
-- **Responsive via CSS**: Tailwind breakpoints (`md:`, `lg:`) handle layout changes — no JS-based mobile detection
+- **Canvas** (`#globe-canvas`, `position: fixed; inset: 0`) renders the globe behind everything; `#fx` adds static scanlines + vignette.
+- **Shell** (`.shell`, a CSS grid, `pointer-events: none`) holds the HUD; only interactive elements opt back in.
+- **Anchor model**: CSS places and sizes exactly one element, `#globe-anchor`, in every state and breakpoint, and sets three custom properties on it:
+  - `--globe-fit`: sphere diameter ÷ `min(anchor width, anchor height)`
+  - `--globe-bezel`: `1`/`0`, draw the WebGL tick bezel
+  - `--globe-fps`: frame cap (`0` = uncapped, `30` on phone "open" states)
+
+  `main.js` measures the anchor (`measureFrame`) and calls `globe.setFrame({cx, cy, diameter})`; the globe renders itself there via a lens shift. JS never decides layout.
+- **State attributes on `<html>`**:
+  - `data-view="home" | "section"`, `data-open="<id>"` (only while a file is open)
+  - `data-phase="boot" | "intro" | "ready"` (boot sequence on the first visit of a session)
+  - `data-interacted` (hides the drag hint), class `no-webgl` (static fallback)
+- **Breakpoints** (declared in this order in `main.css`): phone base → `md` (48rem) → `lg` (64rem) → `compact` (lg and max-height 820px) → `2xl` (96rem) → `short` (landscape, max-height 540px). **`short` is declared last so it wins**, e.g. at 1024×500.
+- **Custom variants** in `main.css`: `short:`, `compact:` and `section:` (inside `html[data-view="section"]`).
+- **No JS width checks**: responsive behaviour is CSS only.
 
 ### Directory Structure
-- **`public/`** - Static assets served by Vite (CNAME, etc.)
-- **`assets/`** - Favicon and other assets
-- **`src/`** - Source modules (see above)
-- **`dist/`** - Built output (generated by `npm run build`)
-- **`archive/`** - Backup of previous multi-page version
+- **`public/`**: static assets served as-is (CNAME, `fonts/`, and later your portrait, résumé and project images)
+- **`assets/`**: favicon
+- **`src/`**: source modules (see above)
+- **`dist/`**: build output (generated by `npm run build`)
+- **`archive/`**: backup of the previous multi-page version
 
 ### Design Principles
-1. **Separation of concerns** — rendering, input, and UI are independent modules communicating via clean APIs
-2. **CSS-first responsive** — Tailwind breakpoints and flexbox, not JS `window.innerWidth` checks
-3. **Accessible interactive elements** — HTML `<button>` elements with proper focus styles and min 48px touch targets
-4. **Decorative SVG is purely visual** — the frame/reticle SVG uses `aria-hidden` and `pointer-events: none`
-5. **Performance** — `devicePixelRatio` capped at 2, UI updates decoupled from render loop
+1. **Separation of concerns**: rendering, input, HUD and content are independent modules with clean APIs
+2. **CSS-first responsive**: grid + breakpoints decide layout; the globe follows `#globe-anchor`
+3. **Accessible interactive elements**: real `<button>`s and links, visible focus, 48px minimum targets, no focus traps, state never shown by colour alone
+4. **Decorative visuals are purely visual**: canvas, `#fx`, boot overlay, corners and decorative SVG are `aria-hidden` with `pointer-events: none`
+5. **Performance**: `devicePixelRatio` capped at 2, quality tiers with one-way adaptive downgrade, HUD updates at 10 Hz off the render loop, render paused when the tab is hidden
+6. **Content honesty**: no invented personal facts. Unknown content is `TODO('…')` in `content.js` and renders as a hatched "awaiting data" placeholder
+7. **`prefers-reduced-motion` honoured**: no boot, no idle spin, render-on-demand globe, CSS animations reduced to a short fade
 
 ## Key Architecture Notes
 
-1. **Vite Build System** - Source files in `src/` are bundled by Vite. Hot-reload in dev, tree-shaken in prod.
-
-2. **Tailwind CSS** - Styling uses Tailwind utility classes in HTML + custom CSS in `main.css`. Theme tokens defined in `@theme` block.
-
-3. **Three.js Globe** - Icosahedron wireframe with depth-based opacity shaders. Flying triangle tracers orbit the surface. Momentum-based rotation with damping.
-
-4. **HTML Entry Point** - `index.html` at repo root (not in `public/`). Vite serves it directly.
-
-5. **GitHub Actions Deployment** - `.github/workflows/deploy.yml` builds and deploys to GitHub Pages on push to `master`.
+1. **Vite Build System**: source in `src/` is bundled by Vite. Hot reload in dev, tree-shaken in prod.
+2. **Tailwind CSS v4**: tokens in the `@theme` block; custom CSS lives in `@layer components` so utilities can still override it.
+3. **Three.js Globe**: merged-tube icosahedron wireframe with facing-based opacity, HDR bloom, rim atmosphere, orbit ring with satellites, tick bezel, starfield and tracers. Momentum rotation with damping.
+4. **HTML Entry Point**: `index.html` at the repo root (not in `public/`). A tiny inline script sets `data-phase="boot"` before first paint.
+5. **GitHub Actions Deployment**: `.github/workflows/deploy.yml` builds and deploys to GitHub Pages on push to `master`.
 
 ## Development Workflow
 
 ### Local Development
 1. Install dependencies: `npm install`
-2. Start dev server: `npm run dev` (runs Vite with hot-reload)
-3. Dev server typically runs at `http://localhost:5173`
-4. Or run `./start-dev-server.sh` for a convenience wrapper
+2. Start dev server: `npm run dev` (Vite with hot reload), usually at `http://localhost:5173`
+3. Or run `./start-dev-server.sh` for a convenience wrapper
+4. URL switches: `?quality=high|medium|low` forces a render tier (and disables adaptive downgrade); `?debug` exposes `window.__ag = { globe, ui }`
 
 ### Building for Production
 ```bash
@@ -71,13 +83,15 @@ npm run preview  # Preview the built site locally
 ```
 
 ### Testing & Validation
-- **Browser Testing**: Test in modern browsers supporting ES6, CSS Grid/Flexbox, and WebGL
-- **Responsive Design**: Test at multiple viewport sizes — the layout uses CSS breakpoints, not JS
-- **Performance**: Monitor Three.js rendering; `devicePixelRatio` is capped at 2
+- **Browser Testing**: modern browsers with ES modules, CSS grid, container queries and WebGL2
+- **Responsive Design**: check phone portrait (390×844, 360×640), short landscape (844×390), compact desktop (1280×720) and desktop (1440×900), in the home and file-open states
+- **No WebGL**: launch Chromium with `--disable-3d-apis` to check the static fallback
+- **Reduced motion**: emulate `prefers-reduced-motion: reduce`
+- **Performance**: watch the RENDER readout (FPS · tier) in the telemetry rail
 
 ### Deployment
-- GitHub Actions automatically builds and deploys on push to `master` branch
-- See `.github/workflows/deploy.yml` for deployment pipeline
+- GitHub Actions builds and deploys on push to the `master` branch
+- See `.github/workflows/deploy.yml` for the pipeline
 - Custom domain configured via `public/CNAME`
 
 ### Git Commits
@@ -89,41 +103,55 @@ npm run preview  # Preview the built site locally
 
 | File | Purpose |
 |------|---------|
+| `src/content.js` | **All personal content** (the only file to edit for content) |
+| `index.html` | HTML entry point: shell, HUD, panel, nav, boot overlay |
+| `src/main.js` | Wiring: router, keyboard, focus, globe + controls, resize, fallback |
+| `src/panel.js` | Renders content into the panel (files, details, Globe Lab) |
+| `src/ui.js` | HUD controller: view state, telemetry, log, clocks, boot |
+| `src/globe.js` | `WireframeGlobe`, the Three.js globe (rendering only) |
+| `src/globe/` | Globe internals: `shaders.js`, `parts.js`, `trail.js`, `math.js` |
+| `src/controls.js` | Pointer/wheel/keyboard input for the globe |
+| `src/main.css` | Fonts, tokens, variants, layout and component styles |
+| `public/fonts/` | Self-hosted Departure Mono + its SIL OFL licence |
 | `public/CNAME` | Custom domain configuration for GitHub Pages |
-| `index.html` | Main HTML entry point (at repo root) |
-| `src/main.js` | Application entry point — wires modules together |
-| `src/globe.js` | Three.js 3D globe (rendering only) |
-| `src/controls.js` | Mouse/touch/wheel input handling |
-| `src/ui.js` | HTML overlay UI controller |
-| `src/main.css` | Global styles (Tailwind CSS + custom) |
 | `vite.config.js` | Vite build configuration |
 | `package.json` | Dependencies and scripts |
 | `.github/workflows/deploy.yml` | GitHub Actions CI/CD pipeline |
-| `archive/` | Backup of previous multi-page version |
+| `archive/` | Backup of the previous multi-page version |
 
 ## Common Tasks
 
-### Adding New Content/Sections
-1. Add HTML structure in `index.html` with Tailwind responsive classes
-2. Add any custom styles in `src/main.css`
-3. Wire behavior in `src/main.js` (or create a new module if complex)
-4. Test with `npm run dev`
+### Adding Content
+Edit `src/content.js`:
+1. Replace `TODO('…')` values with plain strings.
+2. Set `href` / `image` / `email` / `portrait` (anything left `null` renders as "PENDING").
+3. Drop images and the résumé into `public/` and reference them with absolute paths (`'/portrait.jpg'`, `'/resume.pdf'`, `'/projects/op-01.jpg'`).
+4. `npm run dev` logs how many placeholder fields remain (`[content] N placeholder fields remain`).
+
+Never invent personal facts (employers, handles, emails, bios) when filling content; ask the owner.
+
+### Adding a Section
+1. Add it to `sections` in `src/content.js` (id, index, label, file name, abstract globe target).
+2. Add a matching `.cmd` button to `#nav` in `index.html`.
+3. Add a renderer to `RENDERERS` in `src/panel.js`.
+4. Never give any element an `id` equal to a route name.
 
 ### Modifying the 3D Globe
-1. Edit `src/globe.js` — only rendering/animation logic lives here
-2. For new interaction modes, extend `src/controls.js`
-3. For new UI indicators, extend `src/ui.js`
+1. Edit `src/globe.js` / `src/globe/*`: rendering and animation only, no DOM.
+2. For new interaction modes, extend `src/controls.js`.
+3. For new HUD readouts, extend `src/ui.js` and feed it from `main.js`.
+4. Keep the `WireframeGlobe` public API stable: `main.js` checks for it and drops to static mode if a method is missing.
 
 ### Styling Changes
-1. Prefer Tailwind utility classes in HTML for responsive layouts
-2. Use `src/main.css` for custom component styles (indicators, buttons, decorative elements)
-3. Theme tokens (colors, fonts) are in the `@theme` block in `main.css`
+1. Theme tokens (colours, fonts, easings) are in the `@theme` block in `src/main.css`.
+2. Layout per breakpoint lives in the ordered media blocks in `src/main.css`; move the globe by restyling `#globe-anchor` (position, size, `--globe-fit`), never from JS.
+3. Custom CSS stays inside `@layer components`.
 
 ### Deploying Changes
-1. Commit changes to `master` branch
-2. Push to GitHub — GitHub Actions builds and deploys automatically
+1. Commit changes to the `master` branch
+2. Push to GitHub; GitHub Actions builds and deploys automatically
 
 ### Adding Static Assets
-1. Place assets in `public/` directory
-2. Reference with absolute paths `/asset-name` in HTML/CSS
+1. Place assets in the `public/` directory
+2. Reference them with absolute paths `/asset-name` in HTML/CSS/JS
 3. Assets are copied as-is during build

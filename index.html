@@ -1,122 +1,139 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en" data-view="home" data-phase="ready">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0a0e27">
     <title>Andrew Gerstenslager</title>
+    <!-- replace: see src/content.js site.metaDescription -->
+    <meta name="description" content="Andrew Gerstenslager — andrewgerstenslager.com">
+    <meta property="og:title" content="Andrew Gerstenslager">
+    <meta property="og:url" content="https://andrewgerstenslager.com/">
     <link rel="icon" type="image/x-icon" href="assets/favicon/AG_Favicon.ico">
+    <link rel="preload" href="/fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Departure+Mono&display=swap" rel="stylesheet">
+    <!-- IBM Plex Mono (panel body copy only): loaded without blocking first paint -->
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"></noscript>
+    <script>
+        // First visit of the session, no deep link, motion allowed → play the boot sequence.
+        try {
+            if (!sessionStorage.getItem('ag-booted') && !location.hash &&
+                !matchMedia('(prefers-reduced-motion: reduce)').matches)
+                document.documentElement.dataset.phase = 'boot';
+        } catch (e) {}
+    </script>
     <script type="module" src="/src/main.js"></script>
 </head>
-<body class="bg-bg text-brand font-mono overflow-hidden w-screen h-[100dvh] flex flex-col select-none">
+<body>
+    <a class="skip-link" href="#nav" data-skip>Skip to navigation</a>
 
-    <!-- Three.js canvas — fills entire viewport behind everything -->
-    <canvas id="globe-canvas" class="fixed inset-0 w-full h-full z-0"></canvas>
+    <!-- Three.js canvas (fixed, behind everything) + static scanline/vignette layer -->
+    <canvas id="globe-canvas" aria-hidden="true"></canvas>
+    <div id="fx" aria-hidden="true"></div>
 
-    <!-- UI layer — sits on top of canvas -->
-    <div id="ui-layer" class="relative z-10 w-full h-full flex items-center justify-center pointer-events-none">
+    <div id="shell" class="shell">
+        <span class="corner corner-bl" aria-hidden="true"></span><span class="corner corner-br" aria-hidden="true"></span>
 
-        <!-- HUD wrapper: sized by JS, name + box + buttons all anchored here -->
-        <div id="hud-wrapper" class="relative">
+        <!-- ─── Identity ─── -->
+        <header class="ident">
+            <p class="status-line"><span class="live-dot" aria-hidden="true"></span>LIVE · AG-01 · ANDREWGERSTENSLAGER.COM</p>
+            <div class="name-row">
+                <span class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+                <h1 id="name" class="name"><span class="name-first">Andrew</span> <span class="name-last">Gerstenslager</span></h1>
+            </div>
+            <p id="tagline" class="tagline"></p>
+        </header>
 
-            <!-- ─── Name: anchored above the box ─── -->
-            <header id="name-header" class="absolute bottom-full left-0 right-0 flex items-center justify-center gap-2 pb-1">
-                <div class="name-lines flex gap-2 items-end" aria-hidden="true">
-                    <span class="line" style="height:52px"></span>
-                    <span class="line" style="height:41px"></span>
-                    <span class="line" style="height:30px"></span>
-                    <span class="line" style="height:19px"></span>
-                    <span class="line" style="height:8px"></span>
-                </div>
-                <h1 class="text-3xl md:text-5xl tracking-widest opacity-90 whitespace-nowrap px-6">
-                    ANDREW GERSTENSLAGER
-                </h1>
-                <div class="name-lines flex gap-2 items-end" aria-hidden="true">
-                    <span class="line" style="height:8px"></span>
-                    <span class="line" style="height:19px"></span>
-                    <span class="line" style="height:30px"></span>
-                    <span class="line" style="height:41px"></span>
-                    <span class="line" style="height:52px"></span>
-                </div>
-            </header>
-
-            <!-- ─── The box (HUD) ─── -->
-            <div id="hud" class="relative">
-
-                <!-- Decorative SVG frame -->
-                <svg id="deco-frame" class="absolute inset-0 w-full h-full"
-                     viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-                    <rect x="50" y="50" width="900" height="900" fill="none" stroke="currentColor" stroke-width="5" opacity="0.4"/>
-                    <rect x="60" y="60" width="880" height="880" fill="none" stroke="currentColor" stroke-width="1" opacity="0.25"/>
-                    <circle cx="500" cy="500" r="280" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
-                    <line x1="500" y1="220" x2="500" y2="195" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
-                    <line x1="780" y1="500" x2="805" y2="500" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
-                    <line x1="500" y1="780" x2="500" y2="805" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
-                    <line x1="220" y1="500" x2="195" y2="500" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
-                    <line x1="698" y1="302" x2="716" y2="284" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
-                    <line x1="698" y1="698" x2="716" y2="716" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
-                    <line x1="302" y1="698" x2="284" y2="716" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
-                    <line x1="302" y1="302" x2="284" y2="284" stroke="currentColor" stroke-width="1.5" opacity="0.45"/>
-                    <g opacity="0.35">
-                        <polyline points="160,380 160,460 180,500 160,540 160,620" fill="none" stroke="currentColor" stroke-width="1.2"/>
-                        <line x1="160" y1="380" x2="144" y2="364" stroke="currentColor" stroke-width="1.2"/>
-                        <line x1="160" y1="620" x2="144" y2="636" stroke="currentColor" stroke-width="1.2"/>
-                    </g>
-                    <g opacity="0.35">
-                        <polyline points="840,380 840,460 820,500 840,540 840,620" fill="none" stroke="currentColor" stroke-width="1.2"/>
-                        <line x1="840" y1="380" x2="856" y2="364" stroke="currentColor" stroke-width="1.2"/>
-                        <line x1="840" y1="620" x2="856" y2="636" stroke="currentColor" stroke-width="1.2"/>
-                    </g>
-                </svg>
-
-                <!-- Zoom indicator -->
-                <div id="zoom-indicator" class="indicator-panel" style="top:7%; left:7%">
-                    <div class="indicator-bracket">
-                        <span class="indicator-label">ZOOM</span>
-                        <div class="indicator-bar-track">
-                            <div id="zoom-bar-fill" class="indicator-bar-fill"></div>
-                            <div id="zoom-slider-handle" class="indicator-slider-handle pointer-events-auto"
-                                 role="slider" aria-label="Zoom level" aria-valuemin="0" aria-valuemax="100" tabindex="0"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Velocity indicator -->
-                <div id="velocity-indicator" class="indicator-panel" style="top:7%; right:7%">
-                    <div class="indicator-bracket">
-                        <span class="indicator-label">VELOCITY</span>
-                        <div class="indicator-bar-track">
-                            <div id="velocity-bar-fill" class="indicator-bar-fill"></div>
-                        </div>
-                        <span id="velocity-value" class="indicator-value">0.00</span>
-                    </div>
-                </div>
-
-            </div><!-- /hud -->
-
-            <!-- ─── Buttons: anchored below the box ─── -->
-            <nav id="nav-buttons" class="absolute top-full left-0 right-0 flex flex-col md:flex-row items-stretch md:items-center justify-center gap-2 md:gap-5 pt-1 pointer-events-auto">
-                <button id="about-btn" class="nav-btn">ABOUT ME</button>
-                <button id="portfolio-btn" class="nav-btn">PORTFOLIO</button>
-                <button id="demos-btn" class="nav-btn">DEMOS</button>
-            </nav>
-
-            <!-- Return button (hidden by default) -->
-            <nav id="return-nav" class="absolute top-full left-0 right-0 hidden items-stretch md:items-center justify-center pt-1 pointer-events-auto">
-                <button id="return-btn" class="nav-btn w-full md:w-auto">RETURN</button>
-            </nav>
-
-        </div><!-- /hud-wrapper -->
-
-        <!-- Coming soon overlay (hidden by default) -->
-        <div id="coming-soon" class="hidden absolute inset-0 flex items-center justify-center pointer-events-none">
-            <p class="text-3xl md:text-5xl font-bold tracking-widest opacity-90 text-center leading-relaxed">
-                COMING<br>SOON!
-            </p>
+        <div class="sysblock" aria-hidden="true">
+            <p>UTC <span id="utc">--:--:--</span></p>
+            <p>T+ <span id="met">00:00:00</span></p>
+            <p>LINK <span class="text-cyan">NOMINAL</span></p>
         </div>
+
+        <!-- ─── Telemetry rail (lg+) ─── -->
+        <aside class="rail rail-l" aria-label="Globe telemetry">
+            <div class="readout" aria-hidden="true">
+                <p class="lbl">ANGULAR VEL</p>
+                <p class="val"><span id="t-omega">00.0</span> <span class="unit">°/s</span></p>
+                <svg id="t-spark" class="spark" viewBox="0 0 200 32" preserveAspectRatio="none"><path class="spark-area"/><polyline class="spark-line"/><circle class="spark-dot" r="1.5" cx="-10" cy="-10"/></svg>
+            </div>
+            <div class="readout" aria-hidden="true">
+                <p class="lbl">FACING · NODE <span id="t-node" class="lbl-val">000</span></p>
+                <p class="val val-sm"><span id="t-lat">00.0°N</span><br><span id="t-lon">000.0°E</span></p>
+            </div>
+            <div class="readout readout-cursor" aria-hidden="true">
+                <p class="lbl">CURSOR</p>
+                <p class="val val-sm" id="t-cursor">NO CONTACT</p>
+            </div>
+            <div class="readout readout-mag">
+                <label class="lbl" for="zoom">MAG <span id="t-mag" class="lbl-val" aria-hidden="true">1.00×</span></label>
+                <input id="zoom" class="range" type="range" min="50" max="100" step="1" value="100" aria-valuetext="1.00 times">
+            </div>
+            <div class="readout readout-render" aria-hidden="true">
+                <p class="lbl">RENDER</p>
+                <p class="val val-sm" id="t-render">-- FPS · ----</p>
+            </div>
+            <p class="hint" aria-hidden="true"><span>DRAG ROTATE ·</span> <span>SCROLL ZOOM ·</span> <span>KEYS 1–4</span></p>
+        </aside>
+
+        <!-- ─── Globe stage: CSS sizes #globe-anchor, main.js measures it ─── -->
+        <div class="stage">
+            <div id="globe-anchor" tabindex="0" role="group" aria-roledescription="3D globe"
+                 aria-label="Wireframe globe. Arrow keys rotate, plus and minus zoom, R resets.">
+                <div class="chips" aria-hidden="true"><span class="chip chip-omega">ω <span id="c-omega">00.0</span>°/s</span><span class="chip chip-mag">MAG <span id="c-mag">1.00</span>×</span></div>
+                <p class="drag-hint" aria-hidden="true">DRAG · PINCH</p>
+                <div class="fallback" aria-hidden="true"><!-- .no-webgl only -->
+                    <svg class="fallback-ico" viewBox="0 0 100 100">
+                        <polygon class="ico-back" points="73.51,17.64 88.04,62.36 50,90 11.96,62.36 26.49,17.64"/>
+                        <polygon points="50,10 73.51,17.64 88.04,37.64 88.04,62.36 73.51,82.36 50,90 26.49,82.36 11.96,62.36 11.96,37.64 26.49,17.64"/>
+                        <polygon points="50,10 88.04,37.64 73.51,82.36 26.49,82.36 11.96,37.64"/>
+                        <path d="M50 50L50 10M50 50L88.04 37.64M50 50L73.51 82.36M50 50L26.49 82.36M50 50L11.96 37.64"/>
+                    </svg>
+                    <span>VISUAL OFFLINE</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── File panel (hidden at home) ─── -->
+        <main id="panel" class="panel" aria-labelledby="panel-title" hidden>
+            <span class="panel-brackets" aria-hidden="true"></span>
+            <header class="panel-head">
+                <p class="panel-kicker" id="panel-kicker">FILE 01 // DOSSIER</p>
+                <h2 id="panel-title" class="panel-title" tabindex="-1"><span class="type">ABOUT</span></h2>
+                <div class="panel-meta">
+                    <p class="panel-target" id="panel-target" aria-hidden="true">TARGET NODE 000 · 00.0°N 000.0°E</p>
+                    <p class="pending-chip" id="panel-pending" hidden>0 FIELDS AWAITING DATA</p>
+                </div>
+                <button class="panel-close" type="button" aria-label="Close file"><span class="x" aria-hidden="true">×</span><span class="esc" aria-hidden="true">ESC</span></button>
+            </header>
+            <nav class="panel-tabs" aria-label="Files"></nav>
+            <div id="panel-body" class="panel-body"></div>
+            <footer class="panel-foot">
+                <button type="button" class="foot-btn" data-step="-1"></button>
+                <button type="button" class="foot-btn" data-step="1"></button>
+            </footer>
+        </main>
+
+        <!-- ─── System log (lg+) ─── -->
+        <aside class="rail rail-r" aria-hidden="true">
+            <p class="lbl">SYSTEM LOG</p>
+            <ol id="log" class="log"></ol>
+            <p class="meta">v3.0 · © 2026<br>ANDREW GERSTENSLAGER</p>
+        </aside>
+
+        <!-- ─── Commands (keep in sync with sections in src/content.js) ─── -->
+        <nav id="nav" class="nav" aria-label="Files">
+            <button type="button" class="cmd" data-section="about"><span class="cmd-shape" aria-hidden="true"></span><span class="cmd-idx" aria-hidden="true">01</span><span class="cmd-label">About</span><span class="cmd-caret" aria-hidden="true">►</span></button>
+            <button type="button" class="cmd" data-section="portfolio"><span class="cmd-shape" aria-hidden="true"></span><span class="cmd-idx" aria-hidden="true">02</span><span class="cmd-label">Portfolio</span><span class="cmd-caret" aria-hidden="true">►</span></button>
+            <button type="button" class="cmd" data-section="demos"><span class="cmd-shape" aria-hidden="true"></span><span class="cmd-idx" aria-hidden="true">03</span><span class="cmd-label">Demos</span><span class="cmd-caret" aria-hidden="true">►</span></button>
+            <button type="button" class="cmd" data-section="contact"><span class="cmd-shape" aria-hidden="true"></span><span class="cmd-idx" aria-hidden="true">04</span><span class="cmd-label">Contact</span><span class="cmd-caret" aria-hidden="true">►</span></button>
+        </nav>
     </div>
 
+    <div id="boot" aria-hidden="true"><div id="boot-text"></div><div class="boot-bar"><i></i></div><p class="boot-skip">PRESS ANY KEY OR TAP TO SKIP</p></div>
+    <div id="sr-live" class="sr-only" aria-live="polite"></div>
+    <noscript><p style="font:16px monospace;color:#FFA234;padding:24px">ANDREW GERSTENSLAGER — andrewgerstenslager.com. This site needs JavaScript for its interactive globe.</p></noscript>
 </body>
 </html>

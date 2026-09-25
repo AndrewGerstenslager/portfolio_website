@@ -1,94 +1,368 @@
+import { sections, site } from './content.js';
+
 /**
- * UI controller — manages HTML-based overlay elements.
- * Keeps all DOM reads/writes out of the rendering loop.
+ * UI controller — the HTML HUD around the globe: view state, panel header,
+ * telemetry readouts, sparkline, system log, clocks and the boot sequence.
+ * Pure DOM; it never talks to the globe (main.js feeds it numbers).
  */
+
+const SPARK_N = 60;
+const LOG_KEEP = 8;
+const BOOT_LINE_AT = [0, 110, 220, 330, 440, 550];
+
+const pad = (n, w) => String(n).padStart(w, '0');
+export const fmtLat = (lat) => `${Math.abs(lat).toFixed(1).padStart(4, '0')}°${lat < 0 ? 'S' : 'N'}`;
+export const fmtLon = (lon) => `${Math.abs(lon).toFixed(1).padStart(5, '0')}°${lon < 0 ? 'W' : 'E'}`;
+const hms = (s) => `${pad(Math.floor(s / 3600) % 100, 2)}:${pad(Math.floor(s / 60) % 60, 2)}:${pad(s % 60, 2)}`;
+const utcNow = () => {
+    const d = new Date();
+    return `${pad(d.getUTCHours(), 2)}:${pad(d.getUTCMinutes(), 2)}:${pad(d.getUTCSeconds(), 2)}`;
+};
 
 export class UIController {
     constructor() {
-        // Indicator elements
-        this.zoomBarFill = document.getElementById('zoom-bar-fill');
-        this.zoomSliderHandle = document.getElementById('zoom-slider-handle');
-        this.velocityBarFill = document.getElementById('velocity-bar-fill');
-        this.velocityValue = document.getElementById('velocity-value');
+        const $ = (id) => document.getElementById(id);
+        this.html = document.documentElement;
 
-        // Navigation
-        this.navButtons = document.getElementById('nav-buttons');
-        this.returnNav = document.getElementById('return-nav');
-        this.comingSoon = document.getElementById('coming-soon');
+        // Readouts
+        this.omega = $('t-omega');
+        this.node = $('t-node');
+        this.lat = $('t-lat');
+        this.lon = $('t-lon');
+        this.cursor = $('t-cursor');
+        this.mag = $('t-mag');
+        this.render = $('t-render');
+        this.chipOmega = $('c-omega');
+        this.chipMag = $('c-mag');
+        this.zoom = $('zoom');
+        this.railL = document.querySelector('.rail-l');
 
-        // Indicator containers
-        this.zoomIndicator = document.getElementById('zoom-indicator');
-        this.velocityIndicator = document.getElementById('velocity-indicator');
+        // Sparkline
+        const spark = $('t-spark');
+        this.spark = spark;
+        this.sparkLine = spark?.querySelector('.spark-line');
+        this.sparkArea = spark?.querySelector('.spark-area');
+        this.sparkDot = spark?.querySelector('.spark-dot');
+        this._samples = new Float32Array(SPARK_N);
+        this._head = 0;
+        this._count = 0;
+        this._sparkShown = false;
+        this._tick = 0;
 
-        // Decorative frame
-        this.decoFrame = document.getElementById('deco-frame');
+        // Clocks, log, live region
+        this.utc = $('utc');
+        this.met = $('met');
+        this.logEl = $('log');
+        this.live = $('sr-live');
 
-        // Track bar dimensions
-        this.zoomTrack = this.zoomBarFill?.parentElement;
+        // Panel
+        this.panel = $('panel');
+        this.kicker = $('panel-kicker');
+        this.title = $('panel-title');
+        this.type = this.title.querySelector('.type');
+        this.target = $('panel-target');
+        this.pending = $('panel-pending');
+        this.footBtns = [...this.panel.querySelectorAll('.foot-btn')];
+
+        // Boot
+        this.boot = $('boot');
+        this.bootText = $('boot-text');
+        this.bootBar = this.boot?.querySelector('.boot-bar');
+
+        this._shown = new WeakMap(); // element → last written text
     }
 
-    /** Update zoom bar + slider handle position.  percent: 0–1 */
-    setZoom(percent) {
-        const clamped = Math.max(0, Math.min(1, percent));
-        if (this.zoomBarFill) {
-            this.zoomBarFill.style.width = `${clamped * 100}%`;
-        }
-        if (this.zoomSliderHandle) {
-            // Position handle relative to track width
-            const trackWidth = this.zoomTrack?.offsetWidth ?? 120;
-            const handleWidth = 10;
-            const left = clamped * (trackWidth - handleWidth);
-            this.zoomSliderHandle.style.left = `${left}px`;
-        }
+    /** textContent write only when the value changed */
+    _set(el, text) {
+        if (!el || this._shown.get(el) === text) return;
+        this._shown.set(el, text);
+        el.textContent = text;
     }
 
-    /** Update velocity bar + readout.  percent: 0–1 */
-    setVelocity(percent) {
-        const clamped = Math.max(0, Math.min(1, percent));
-        if (this.velocityBarFill) {
-            this.velocityBarFill.style.width = `${clamped * 100}%`;
+    // ── View state ─────────────────────────────────────────
+
+    /** Home (null) or an open file. `switching` = file→file or list↔item (fast body reveal). */
+    setView(sectionId, { switching = false } = {}) {
+        const html = this.html;
+        html.dataset.view = sectionId ? 'section' : 'home';
+        if (sectionId) html.dataset.open = sectionId;
+        else delete html.dataset.open;
+
+        for (const b of document.querySelectorAll('.cmd[data-section], .tab[data-section]')) {
+            if (b.dataset.section === sectionId) b.setAttribute('aria-current', 'page');
+            else b.removeAttribute('aria-current');
         }
-        if (this.velocityValue) {
-            this.velocityValue.textContent = (clamped * 100).toFixed(2);
-        }
+        // Set before the body renders so the reveal delays pick it up
+        this.panel.style.setProperty('--reveal-base', switching ? '80ms' : '600ms');
+        this.panel.hidden = !sectionId;
     }
 
-    /** Enter "coming soon" view — hide HUD, show message + return button */
-    enterViewMode() {
-        if (this.navButtons) this.navButtons.classList.add('hidden');
-        if (this.zoomIndicator) this.zoomIndicator.classList.add('hidden');
-        if (this.velocityIndicator) this.velocityIndicator.classList.add('hidden');
-        if (this.decoFrame) this.decoFrame.classList.add('hidden');
+    /** Header for a newly opened file; target = globe.focus() result or null. */
+    setPanelHeader(section, target, todoCount, { switching = false } = {}) {
+        const label = section.label.toUpperCase();
+        this.kicker.textContent = `FILE ${section.index} // ${section.file}`;
+        this.type.textContent = label;
+        this.type.style.setProperty('--n', String(label.length));
 
-        if (this.returnNav) {
-            this.returnNav.classList.remove('hidden');
-            this.returnNav.classList.add('flex');
+        if (target) {
+            this.target.hidden = false;
+            this.target.textContent = `TARGET NODE ${pad(target.node, 3)} · ${fmtLat(target.lat)} ${fmtLon(target.lon)}`;
+        } else {
+            this.target.hidden = true;
         }
-        if (this.comingSoon) {
-            this.comingSoon.classList.remove('hidden');
-            this.comingSoon.classList.add('flex');
-        }
+        this.setPending(todoCount);
+
+        // Footer: previous / next file (wrapping)
+        const i = sections.indexOf(section);
+        const n = sections.length;
+        const prev = sections[(i - 1 + n) % n];
+        const next = sections[(i + 1) % n];
+        this.footBtns[0].textContent = `◄ ${prev.index} ${prev.label.toUpperCase()}`;
+        this.footBtns[0].setAttribute('aria-label', `Previous file: ${prev.label}`);
+        this.footBtns[1].textContent = `${next.index} ${next.label.toUpperCase()} ►`;
+        this.footBtns[1].setAttribute('aria-label', `Next file: ${next.label}`);
+
+        // Restart the power-on (or the lighter switch) animation
+        const p = this.panel;
+        p.classList.remove('is-entering', 'is-switching');
+        void p.offsetWidth;
+        p.classList.add(switching ? 'is-switching' : 'is-entering');
     }
 
-    /** Exit "coming soon" view — restore HUD */
-    exitViewMode() {
-        if (this.navButtons) this.navButtons.classList.remove('hidden');
-        if (this.zoomIndicator) this.zoomIndicator.classList.remove('hidden');
-        if (this.velocityIndicator) this.velocityIndicator.classList.remove('hidden');
-        if (this.decoFrame) this.decoFrame.classList.remove('hidden');
-
-        if (this.returnNav) {
-            this.returnNav.classList.add('hidden');
-            this.returnNav.classList.remove('flex');
-        }
-        if (this.comingSoon) {
-            this.comingSoon.classList.add('hidden');
-            this.comingSoon.classList.remove('flex');
-        }
+    setPending(todoCount) {
+        this.pending.hidden = !(todoCount > 0);
+        this.pending.textContent = `${todoCount} FIELD${todoCount === 1 ? '' : 'S'} AWAITING DATA`;
     }
 
-    /** Get zoom track bounding rect for slider drag calculations */
-    getZoomTrackRect() {
-        return this.zoomTrack?.getBoundingClientRect() ?? null;
+    // ── Telemetry (10 Hz from main.js) ─────────────────────
+
+    updateTelemetry(t) {
+        const w = Math.min(Math.max(t.omegaDegPerSec || 0, 0), 999.9);
+        const ws = w.toFixed(1).padStart(4, '0');
+        this._set(this.omega, ws);
+        this._set(this.chipOmega, ws);
+        this._set(this.lat, fmtLat(t.facingLat || 0));
+        this._set(this.lon, fmtLon(t.facingLon || 0));
+        this._set(this.node, pad(t.facingNode || 0, 3));
+        const z = (t.zoom ?? 1).toFixed(2);
+        this._set(this.mag, `${z}×`);
+        this._set(this.chipMag, z);
+        const tier = String(t.tier || '').toUpperCase();
+        this._set(this.render, `${Math.round(t.fps || 0)} FPS · ${tier}`);
+
+        // Sparkline ring buffer; redraw only while the rail is on screen
+        this._samples[this._head] = w;
+        this._head = (this._head + 1) % SPARK_N;
+        this._count = Math.min(this._count + 1, SPARK_N);
+        if (this._tick % 10 === 0) {
+            this._sparkShown = !!this.railL && this.railL.offsetParent !== null &&
+                !!this.spark && this.spark.getClientRects().length > 0;
+        }
+        if (this._sparkShown) this._drawSpark();
+
+        // Globe Lab stats line at 2 Hz while it is on screen
+        if (this._tick % 5 === 0) {
+            const stats = document.getElementById('lab-stats');
+            if (stats && !this.html.classList.contains('no-webgl') && stats.offsetParent !== null) {
+                this._set(stats, `TIER ${tier} · ${Math.round(t.fps || 0)} FPS · ${t.drawCalls ?? 0} DRAW CALLS`);
+            }
+        }
+        this._tick++;
+    }
+
+    _drawSpark() {
+        const n = this._count;
+        if (n < 2 || !this.sparkLine) return;
+        let max = 10;
+        for (let i = 0; i < n; i++) max = Math.max(max, this._samples[i]);
+        max *= 1.15;
+        let pts = '';
+        let x = 0;
+        let y = 0;
+        const start = (this._head - n + SPARK_N) % SPARK_N;
+        for (let i = 0; i < n; i++) {
+            const v = this._samples[(start + i) % SPARK_N];
+            x = ((SPARK_N - n + i) / (SPARK_N - 1)) * 200;
+            y = 31 - (v / max) * 28;
+            pts += `${x.toFixed(1)},${y.toFixed(1)} `;
+        }
+        const x0 = (((SPARK_N - n) / (SPARK_N - 1)) * 200).toFixed(1);
+        this.sparkLine.setAttribute('points', pts);
+        this.sparkArea.setAttribute('d', `M${x0},32 L${pts.trim().replaceAll(' ', ' L')} L${x.toFixed(1)},32 Z`);
+        this.spark.classList.add('has-data');
+        this.sparkDot.setAttribute('cx', x.toFixed(1));
+        this.sparkDot.setAttribute('cy', y.toFixed(1));
+    }
+
+    setCursor(hit, lat, lon) {
+        this._set(this.cursor, hit ? `${fmtLat(lat)} ${fmtLon(lon)}` : 'NO CONTACT');
+    }
+
+    setZoomUI(z) {
+        if (!this.zoom) return;
+        const v = Math.round(Math.min(Math.max(z, 0.5), 1) * 100);
+        this.zoom.value = String(v);
+        this.zoom.style.setProperty('--fill', `${(v - 50) * 2}%`);
+        this.zoom.setAttribute('aria-valuetext', `${(v / 100).toFixed(2)} times`);
+        this._set(this.mag, `${(v / 100).toFixed(2)}×`);
+        this._set(this.chipMag, (v / 100).toFixed(2));
+    }
+
+    /** Static-mode readouts: honest dashes instead of frozen numbers. */
+    setOffline() {
+        this._set(this.omega, '--.-');
+        this._set(this.lat, '--.-°N');
+        this._set(this.lon, '---.-°E');
+        this._set(this.node, '---');
+        this._set(this.render, 'OFFLINE');
+        this._set(this.cursor, 'NO CONTACT');
+    }
+
+    startClocks() {
+        const tick = () => {
+            this._set(this.utc, utcNow());
+            this._set(this.met, hms(Math.floor(performance.now() / 1000)));
+        };
+        tick();
+        // Align to the next UTC second boundary
+        setTimeout(() => {
+            tick();
+            setInterval(tick, 1000);
+        }, 1000 - (Date.now() % 1000));
+    }
+
+    // ── System log ─────────────────────────────────────────
+
+    log(msg, { announce = false } = {}) {
+        if (this.logEl) {
+            const li = document.createElement('li');
+            li.className = 'new';
+            const ts = document.createElement('span');
+            ts.className = 'ts';
+            ts.textContent = utcNow();
+            const m = document.createElement('span');
+            m.textContent = msg;
+            li.append(ts, m);
+            this.logEl.append(li);
+            while (this.logEl.children.length > LOG_KEEP) this.logEl.firstElementChild.remove();
+            setTimeout(() => li.classList.remove('new'), 1000);
+        }
+        if (announce) this.announce(msg);
+    }
+
+    announce(msg) {
+        if (!this.live) return;
+        this.live.textContent = '';
+        setTimeout(() => { this.live.textContent = msg; }, 60);
+    }
+
+    // ── Boot sequence ──────────────────────────────────────
+
+    /**
+     * Prints the boot log over the deep-blue overlay, reveals the globe at 450 ms,
+     * hands over to the HUD intro at 1300 ms and to 'ready' at 1900 ms.
+     * Any key or pointer press skips straight to 'ready'.
+     */
+    runBoot({ webgl, tier, todoCount, stats, onReveal, onDone }) {
+        const html = this.html;
+        if (html.dataset.phase !== 'boot' || !this.boot) {
+            onDone?.();
+            return;
+        }
+
+        const files = `${sections.length} FILES`;
+        const lines = [
+            { k: `${site.callsign} // ${site.domain.toUpperCase()}`, v: 'BUILD 2026.09', head: true },
+            { k: '> TYPEFACE', v: '…', font: true },
+            { k: '> RENDERER', v: webgl ? `WEBGL2 · ${String(tier).toUpperCase()}` : 'OFFLINE → STATIC MODE', warn: !webgl },
+            stats ? { k: '> GEODESIC MESH', v: `${stats.nodes} NODES / ${stats.edges} EDGES` } : null,
+            { k: '> DOSSIER', v: todoCount ? `${files} · ${todoCount} FIELDS AWAITING DATA` : `${files} · ALL FIELDS LOADED` },
+            { k: '> ESTABLISHING ORBIT', cursor: true },
+        ].filter(Boolean);
+
+        // Typeface check races an 800 ms timeout
+        let fontValue = null;
+        let fontEl = null;
+        const setFont = (v) => {
+            fontValue = v;
+            if (fontEl) {
+                fontEl.textContent = v;
+                fontEl.classList.toggle('is-warn', v !== 'OK');
+            }
+        };
+        const fontCheck = document.fonts
+            ? document.fonts.load('16px "Departure Mono"')
+                .then(() => (document.fonts.check('16px "Departure Mono"') ? 'OK' : 'FALLBACK'))
+            : Promise.resolve('FALLBACK');
+        Promise.race([fontCheck, new Promise((r) => setTimeout(() => r('FALLBACK'), 800))])
+            .then(setFont, () => setFont('FALLBACK'));
+
+        const timers = [];
+        const at = (ms, fn) => timers.push(setTimeout(fn, ms));
+        let revealed = false;
+        let finished = false;
+        const reveal = () => {
+            if (revealed) return;
+            revealed = true;
+            onReveal?.();
+        };
+
+        this.bootText.replaceChildren();
+        lines.forEach((line, i) => at(BOOT_LINE_AT[Math.min(i, BOOT_LINE_AT.length - 1)], () => {
+            const row = document.createElement('div');
+            row.className = line.head ? 'boot-line is-head' : 'boot-line';
+            const k = document.createElement('span');
+            k.className = 'k';
+            k.textContent = line.k;
+            row.append(k);
+            if (line.cursor) {
+                const c = document.createElement('span');
+                c.className = 'boot-cursor';
+                c.textContent = '▌';
+                row.append(c);
+            } else {
+                if (!line.head) {
+                    const dots = document.createElement('span');
+                    dots.className = 'dots';
+                    row.append(dots);
+                }
+                const v = document.createElement('span');
+                v.className = line.warn ? 'v is-warn' : 'v';
+                v.textContent = line.v;
+                if (line.font) {
+                    fontEl = v;
+                    if (fontValue) setFont(fontValue);
+                }
+                row.append(v);
+            }
+            this.bootText.append(row);
+            this.bootBar?.style.setProperty('--p', String((i + 1) / lines.length));
+        }));
+
+        const finish = () => {
+            if (finished) return;
+            finished = true;
+            timers.forEach(clearTimeout);
+            window.removeEventListener('keydown', skip, true);
+            window.removeEventListener('pointerdown', skip, true);
+            reveal();
+            html.dataset.phase = 'ready';
+            this.boot.classList.remove('is-revealing', 'is-fading');
+            try { sessionStorage.setItem('ag-booted', '1'); } catch { /* private mode */ }
+            onDone?.();
+        };
+        const skip = () => finish();
+
+        at(450, () => {
+            reveal();
+            this.boot.classList.add('is-revealing');
+        });
+        at(1100, () => this.boot.classList.add('is-fading'));
+        at(1300, () => { html.dataset.phase = 'intro'; });
+        at(1900, finish);
+
+        // Capture phase so the skip runs before any other key handling
+        window.addEventListener('keydown', skip, true);
+        window.addEventListener('pointerdown', skip, true);
     }
 }
