@@ -154,6 +154,7 @@ export const atmosphereFragment = /* glsl */`
     uniform float uRadius;
     uniform float uOuter;
     uniform float uStrength;
+    uniform float uLimbPow;
     varying vec3 vWorld;
 
     void main() {
@@ -164,7 +165,7 @@ export const atmosphereFragment = /* glsl */`
         float x = b / uRadius;                               // 1.0 at the globe silhouette
         float t = clamp((x - 1.0) / (uOuter - 1.0), 0.0, 1.0);
         float halo = exp(-t * 4.5) * (1.0 - t * t);
-        float limb = pow(clamp(x, 0.0, 1.0), 14.0);
+        float limb = pow(clamp(x, 0.0, 1.0), uLimbPow);
         float i = (x >= 1.0 ? halo : limb) * uStrength;
         gl_FragColor = vec4(uColor * i * uAtmo, 1.0);
         #include <colorspace_fragment>
@@ -229,7 +230,9 @@ export const wireFragment = /* glsl */`
         vec3 v = normalize(cameraPosition - vWorld);
         float facing = dot(n, v);
         float a = mix(0.09, 1.0, smoothstep(-0.25, 0.55, facing));
-        vec3 col = uColor * (1.0 + 0.6 * pow(1.0 - abs(facing), 3.0));
+        // Rim-dimmed: strokes stack up near the silhouette, so dimming them
+        // there keeps the edge crisp under bloom and lets the sphere read 3D
+        vec3 col = uColor * mix(0.55, 1.0, smoothstep(0.0, 0.6, facing));
 
         float r = smoothstep(vSeed - 0.04, vSeed, uReveal);
         a *= r;

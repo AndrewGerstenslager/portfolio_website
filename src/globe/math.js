@@ -111,6 +111,10 @@ export class Tween {
         return true;
     }
 
+    get duration() {
+        return this._dur;
+    }
+
     finish() {
         this.active = false;
         this.raw = 1;

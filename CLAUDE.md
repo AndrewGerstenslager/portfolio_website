@@ -10,7 +10,7 @@ A retro-futuristic "mission control" portfolio site: a glowing 3D wireframe glob
 - **Build Tool**: Vite v7.3.1
 - **Styling**: Tailwind CSS v4.2.1 (`@theme` tokens + component CSS in `src/main.css`)
 - **3D Graphics**: Three.js v0.183.2, plus the Three.js addons that ship with it (EffectComposer, UnrealBloomPass, OutputPass, BufferGeometryUtils). No other runtime dependencies.
-- **Fonts**: self-hosted Departure Mono (`public/fonts`, SIL OFL) for the UI, plus IBM Plex Mono (Google Fonts) for panel body text
+- **Fonts**: self-hosted Departure Mono (`public/fonts`, SIL OFL) for the UI, plus IBM Plex Mono (`public/fonts`, SIL OFL, latin + latin-ext subsets) for panel body text. No third-party font requests
 - **HTML5/CSS3/JavaScript** with ES modules (no framework, no TypeScript)
 - **Deployment**: GitHub Pages with GitHub Actions CI/CD
 
@@ -19,11 +19,11 @@ A retro-futuristic "mission control" portfolio site: a glowing 3D wireframe glob
 Single-page app built with Vite. Rendering, input, HUD and content are separate modules that talk through small APIs:
 
 ### Module Structure
-- **`src/main.js`**: entry point and wiring. Hash router (`#about`, `#portfolio/op-02`, …), history, global keyboard, focus management, globe wiring, `ResizeObserver` frame sync, visibility pause, reduced-motion changes, no-WebGL fallback, Globe Lab persistence. Calls the globe **only** through the `WireframeGlobe` public API.
+- **`src/main.js`**: entry point and wiring. Hash router (`#about`, `#portfolio/op-02`, …), history, global keyboard, focus management, globe wiring, `ResizeObserver` frame sync, visibility pause, reduced-motion changes, no-WebGL fallback, Globe Lab persistence, nav → globe preview, cursor tag. Calls the globe **only** through the `WireframeGlobe` public API. `globe.js` + `controls.js` (and Three.js) are loaded with a dynamic `import()` so the HUD and panel text paint first; `attachGlobe()` then catches the globe up with the current route.
 - **`src/globe.js`** + **`src/globe/{shaders,parts,trail,math}.js`**: `WireframeGlobe`. Three.js rendering only (scene, bloom composer, tiers, lens framing, motion, focus/pulse/intro). No DOM access.
 - **`src/controls.js`**: `GlobeControls`. Pointer Events input (drag, fling, pinch, wheel, double-tap reset, arrow/+/−/R keys on the focused globe). Emits callbacks only.
 - **`src/ui.js`**: `UIController`. The HTML HUD: view state, panel header, telemetry readouts, sparkline, system log, UTC/MET clocks, boot sequence. Never calls the globe.
-- **`src/panel.js`**: renders `content.js` into the panel (tabs, the four files, project detail routes, the Globe Lab). DOM is built with `createElement` + `textContent` only.
+- **`src/panel.js`**: renders `content.js` into the panel (tabs, the four files, project detail routes, the Globe Lab). DOM is built with `createElement` + `textContent` only. Owns the draft/production switch (`DRAFTS`, see *Draft mode* below).
 - **`src/content.js`**: **all personal content. It is the only file to edit for content.** Plain data, no DOM, no imports.
 - **`src/main.css`**: fonts, `@theme` tokens, custom variants, and all layout/component CSS (inside `@layer components`).
 
@@ -57,7 +57,7 @@ Single-page app built with Vite. Rendering, input, HUD and content are separate 
 3. **Accessible interactive elements**: real `<button>`s and links, visible focus, 48px minimum targets, no focus traps, state never shown by colour alone
 4. **Decorative visuals are purely visual**: canvas, `#fx`, boot overlay, corners and decorative SVG are `aria-hidden` with `pointer-events: none`
 5. **Performance**: `devicePixelRatio` capped at 2, quality tiers with one-way adaptive downgrade, HUD updates at 10 Hz off the render loop, render paused when the tab is hidden
-6. **Content honesty**: no invented personal facts. Unknown content is `TODO('…')` in `content.js` and renders as a hatched "awaiting data" placeholder
+6. **Content honesty**: no invented personal facts. Unknown content is `TODO('…')` in `content.js`; in production it is simply left out (a file with nothing real shows one "FILE SEALED" card), in draft mode it renders as a hatched "awaiting data" placeholder
 7. **`prefers-reduced-motion` honoured**: no boot, no idle spin, render-on-demand globe, CSS animations reduced to a short fade
 
 ## Key Architecture Notes
@@ -74,7 +74,13 @@ Single-page app built with Vite. Rendering, input, HUD and content are separate 
 1. Install dependencies: `npm install`
 2. Start dev server: `npm run dev` (Vite with hot reload), usually at `http://localhost:5173`
 3. Or run `./start-dev-server.sh` for a convenience wrapper
-4. URL switches: `?quality=high|medium|low` forces a render tier (and disables adaptive downgrade); `?debug` exposes `window.__ag = { globe, ui }`
+4. URL switches: `?quality=high|medium|low` forces a render tier (and disables adaptive downgrade); `?debug` exposes `window.__ag = { globe, ui }`; `?drafts` turns on draft mode in a production build (the dev server is always in draft mode)
+
+### Draft mode vs production
+`DRAFTS = import.meta.env.DEV || URL has ?drafts` (in `src/panel.js`).
+- **Draft mode** (`npm run dev`, or `?drafts` on any build): every `TODO('…')` / `null` field renders as a hatched placeholder with a "— replace in src/content.js" hint, the file header shows an "N FIELDS AWAITING DATA" chip, and the tagline placeholder shows under the name. Use it to see what is left to fill in.
+- **Production** (the deployed site): `TODO` fields and `null` links/images are omitted. A group whose items are all omitted disappears with its heading, a project or demo whose title is `TODO` is omitted, and a file with nothing real left renders one composed "FILE SEALED · DECLASSIFICATION PENDING" card. Demos always keeps the real Globe Lab; Contact always shows the known domain. No visitor-visible text mentions `src/content.js`.
+- As soon as a field in `content.js` becomes a plain string (or a link/image is set), it appears in production with no other change.
 
 ### Building for Production
 ```bash
@@ -112,7 +118,7 @@ npm run preview  # Preview the built site locally
 | `src/globe/` | Globe internals: `shaders.js`, `parts.js`, `trail.js`, `math.js` |
 | `src/controls.js` | Pointer/wheel/keyboard input for the globe |
 | `src/main.css` | Fonts, tokens, variants, layout and component styles |
-| `public/fonts/` | Self-hosted Departure Mono + its SIL OFL licence |
+| `public/fonts/` | Self-hosted Departure Mono + IBM Plex Mono and their SIL OFL licences |
 | `public/CNAME` | Custom domain configuration for GitHub Pages |
 | `vite.config.js` | Vite build configuration |
 | `package.json` | Dependencies and scripts |
@@ -124,9 +130,9 @@ npm run preview  # Preview the built site locally
 ### Adding Content
 Edit `src/content.js`:
 1. Replace `TODO('…')` values with plain strings.
-2. Set `href` / `image` / `email` / `portrait` (anything left `null` renders as "PENDING").
+2. Set `href` / `image` / `email` / `portrait` (anything left `null` is hidden in production and shows as "PENDING" in draft mode).
 3. Drop images and the résumé into `public/` and reference them with absolute paths (`'/portrait.jpg'`, `'/resume.pdf'`, `'/projects/op-01.jpg'`).
-4. `npm run dev` logs how many placeholder fields remain (`[content] N placeholder fields remain`).
+4. `npm run dev` (draft mode) shows every remaining placeholder and logs the count (`[content] N placeholder fields remain`); check the production look with `npm run build && npm run preview`.
 
 Never invent personal facts (employers, handles, emails, bios) when filling content; ask the owner.
 

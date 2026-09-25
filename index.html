@@ -11,11 +11,6 @@
     <meta property="og:url" content="https://andrewgerstenslager.com/">
     <link rel="icon" type="image/x-icon" href="assets/favicon/AG_Favicon.ico">
     <link rel="preload" href="/fonts/DepartureMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- IBM Plex Mono (panel body copy only): loaded without blocking first paint -->
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-    <noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"></noscript>
     <script>
         // First visit of the session, no deep link, motion allowed → play the boot sequence.
         try {
@@ -32,6 +27,7 @@
     <!-- Three.js canvas (fixed, behind everything) + static scanline/vignette layer -->
     <canvas id="globe-canvas" aria-hidden="true"></canvas>
     <div id="fx" aria-hidden="true"></div>
+    <div id="cursor-tag" class="cursor-tag" aria-hidden="true" hidden><span class="tag-text"></span></div>
 
     <div id="shell" class="shell">
         <span class="corner corner-bl" aria-hidden="true"></span><span class="corner corner-br" aria-hidden="true"></span>
@@ -69,7 +65,7 @@
             </div>
             <div class="readout readout-mag">
                 <label class="lbl" for="zoom">MAG <span id="t-mag" class="lbl-val" aria-hidden="true">1.00×</span></label>
-                <input id="zoom" class="range" type="range" min="50" max="100" step="1" value="100" aria-valuetext="1.00 times">
+                <input id="zoom" class="range range-mag" type="range" min="50" max="125" step="1" value="100" aria-valuetext="1.00 times">
             </div>
             <div class="readout readout-render" aria-hidden="true">
                 <p class="lbl">RENDER</p>
@@ -118,9 +114,15 @@
 
         <!-- ─── System log (lg+) ─── -->
         <aside class="rail rail-r" aria-hidden="true">
-            <p class="lbl">SYSTEM LOG</p>
-            <ol id="log" class="log"></ol>
-            <p class="meta">v3.0 · © 2026<br>ANDREW GERSTENSLAGER</p>
+            <div class="files-block">
+                <p class="lbl">FILE INDEX <span class="lbl-val">· SECTOR</span></p>
+                <ol id="files" class="files"></ol>
+            </div>
+            <div class="log-block">
+                <p class="lbl">SYSTEM LOG</p>
+                <ol id="log" class="log"></ol>
+            </div>
+            <p class="meta">v3.0 · <span class="copy">©</span> 2026<br>ANDREW GERSTENSLAGER</p>
         </aside>
 
         <!-- ─── Commands (keep in sync with sections in src/content.js) ─── -->

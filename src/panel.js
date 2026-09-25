@@ -1,10 +1,18 @@
-import { PH_NOTE, about, projects, demos, contact, site } from './content.js';
+import { PH_NOTE, about, projects, demos, contact, site, sections } from './content.js';
 
 /**
  * Panel renderer — turns src/content.js into the DOM of the open file.
  * DOM is built with createElement + textContent only (never innerHTML with content).
- * Anything still marked TODO() / null renders as a deliberate "awaiting data" redaction.
+ *
+ * Two modes:
+ * - Drafts (`npm run dev`, or any URL with ?drafts): every TODO() / null field renders
+ *   as a hatched "awaiting data" redaction with a hint naming src/content.js.
+ * - Production: TODO() fields and null links/images are left out; a group left empty
+ *   disappears with its heading, and a file with nothing real renders one "sealed" card.
+ *   Filling in content.js makes the real layout appear with no other change.
  */
+
+export const DRAFTS = import.meta.env.DEV || new URLSearchParams(location.search).has('drafts');
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const PH_TITLE = 'Placeholder — edit src/content.js';
@@ -52,6 +60,15 @@ function append(node, children) {
 const isTodo = (v) => v != null && typeof v === 'object' && v.todo === true;
 const aria = { 'aria-hidden': 'true' };
 
+/** A value that is real content (not TODO(), null or blank). */
+export const isReal = (v) => (typeof v === 'string' && v.trim() !== '') || typeof v === 'number';
+/** Whether a field renders: always in drafts, only when real in production. */
+const show = (v) => DRAFTS || isReal(v);
+/** Drafts keep every entry; production keeps entries whose `pick(entry)` is real. */
+const keep = (list, pick = (x) => x) => (DRAFTS ? list : list.filter((x) => isReal(pick(x))));
+/** Production keeps entries where at least one of `keys` is real. */
+const keepAny = (list, keys) => (DRAFTS ? list : list.filter((x) => keys.some((k) => isReal(x[k]))));
+
 // ── Content → nodes ────────────────────────────────────
 
 /**
@@ -61,6 +78,7 @@ const aria = { 'aria-hidden': 'true' };
  */
 export function txt(v, { block = false, note = true } = {}) {
     if (typeof v === 'string' || typeof v === 'number') return document.createTextNode(String(v));
+    if (!DRAFTS) return document.createTextNode('');   // renderers filter first; never leak a hint
     if (isTodo(v)) return block ? phBlock(v.label) : phInline(v.label, note);
     return phInline('PENDING', false);
 }
@@ -147,65 +165,142 @@ export function renderTabs(container, sections, onSelect) {
     el('span', { class: 'tab-label', text: s.label }))));
 }
 
+// ── Sealed file (production, nothing real to show yet) ─
+
+const SEALED_BARS = [100, 83, 94, 58];
+const LAB_HASH = '#demos/sim-00';
+
+/**
+ * One composed card instead of a wall of empty fields: redaction bars, a stamp and
+ * a way onward to the live simulation. Only rendered outside drafts.
+ */
+function sealedCard(sectionId, ctx) {
+    const sec = sections.find((s) => s.id === sectionId);
+    const titleId = `sealed-${sectionId}`;
+    const bars = el('div', { class: 'sealed-bars', attrs: aria },
+        SEALED_BARS.map((w, i) => el('span', { style: { '--w': `${w}%`, '--j': i } })));
+    return el('section', { class: 'sealed', attrs: { 'aria-labelledby': titleId } },
+        el('p', { class: 'sealed-meta', attrs: aria },
+            el('span', { text: 'CLEARANCE · RESTRICTED' }),
+            el('span', { text: `REF ${site.callsign}-${sec.index} · ${sec.file}` })),
+        el('div', { class: 'sealed-plate' }, bars,
+            el('span', { class: 'sealed-stamp', attrs: aria, text: 'SEALED' })),
+        el('div', { class: 'sealed-copy' },
+            el('h3', { class: 'sealed-title', attrs: { id: titleId }, text: 'File sealed' }),
+            el('p', { class: 'sealed-sub', text: 'Declassification pending' })),
+        el('button', { class: 'sealed-link', attrs: { type: 'button' },
+            on: { click: () => ctx.navigate(LAB_HASH) } },
+        el('span', { class: 'sealed-link-k', text: ctx.webgl ? 'Live now' : 'Also on file' }),
+        el('span', { class: 'sealed-link-v' }, '03 Simulations', el('span', { attrs: aria, text: ' ►' }))));
+}
+
+/** Slim variant for a sealed group inside an otherwise real file. */
+function sealedStrip(label) {
+    return el('div', { class: 'sealed-strip' },
+        el('span', { class: 'sealed-strip-bar', attrs: aria }),
+        el('p', null, el('span', { class: 'sealed-strip-k', text: label }),
+            el('span', { class: 'sealed-strip-v', text: 'Declassification pending' })));
+}
+
+const sealedRes = (sectionId, ctx, data) => {
+    const root = sealedCard(sectionId, ctx);
+    return { root, blocks: [root], data, sealed: true };
+};
+
 // ── ABOUT / DOSSIER ────────────────────────────────────
 
-function renderAbout() {
-    const portrait = media(about.portrait, site.callsign, { square: true, alt: 'Portrait of Andrew Gerstenslager' });
-    const facts = el('dl', { class: 'facts' }, about.facts.map((f) => el('div', { class: 'fact' },
+const visibleTimeline = () => keepAny(about.timeline, ['when', 'title', 'detail']);
+const visibleSkills = () => about.skills
+    .map((g) => ({ group: g.group, items: keep(g.items) }))
+    .filter((g) => g.items.length);
+
+function aboutIsEmpty() {
+    return !about.portrait && !keep(about.summary).length && !keep(about.facts, (f) => f.value).length &&
+        !visibleTimeline().length && !visibleSkills().length && !about.resume.href;
+}
+
+function renderAbout(ctx) {
+    if (!DRAFTS && aboutIsEmpty()) return sealedRes('about', ctx, about);
+
+    const portrait = show(about.portrait)
+        ? media(about.portrait, site.callsign, { square: true, alt: 'Portrait of Andrew Gerstenslager' }) : null;
+    const factList = keep(about.facts, (f) => f.value);
+    const facts = factList.length ? el('dl', { class: 'facts' }, factList.map((f) => el('div', { class: 'fact' },
         el('dt', { text: f.label }),
-        el('dd', null, txt(f.value)))));
+        el('dd', null, txt(f.value))))) : null;
 
-    const summary = el('div', { class: 'prose' }, about.summary.map((p) => para(p)));
+    const paras = keep(about.summary);
+    const summary = paras.length ? el('div', { class: 'prose' }, paras.map((p) => para(p))) : null;
 
-    const timeline = el('section', { class: 'block' },
+    const tl = visibleTimeline();
+    const timeline = tl.length ? el('section', { class: 'block' },
         blockHeading('Service record'),
-        el('ol', { class: 'timeline' }, about.timeline.map((t) => el('li', { class: 'tl-item' },
-            el('p', { class: 'tl-when' }, txt(t.when, { note: false })),
-            el('p', { class: 'tl-title' }, txt(t.title)),
-            el('p', { class: 'tl-detail' }, txt(t.detail))))));
+        el('ol', { class: 'timeline' }, tl.map((t) => el('li', { class: 'tl-item' },
+            show(t.when) ? el('p', { class: 'tl-when' }, txt(t.when, { note: false })) : null,
+            show(t.title) ? el('p', { class: 'tl-title' }, txt(t.title)) : null,
+            show(t.detail) ? el('p', { class: 'tl-detail' }, txt(t.detail)) : null)))) : null;
 
-    const skills = el('section', { class: 'block' },
+    const groups = visibleSkills();
+    const skills = groups.length ? el('section', { class: 'block' },
         blockHeading('Capabilities'),
-        el('div', { class: 'skill-groups' }, about.skills.map((g) => el('div', { class: 'skill-group' },
+        el('div', { class: 'skill-groups' }, groups.map((g) => el('div', { class: 'skill-group' },
             el('p', { class: 'skill-group-name', text: g.group }),
-            el('ul', { class: 'tags' }, g.items.map((s) => el('li', { class: 'tag' }, txt(s, { note: false }))))))));
+            el('ul', { class: 'tags' }, g.items.map((s) => el('li', { class: 'tag' }, txt(s, { note: false })))))))) : null;
 
-    const resume = el('div', { class: 'link-row' }, linkOrPending(about.resume));
+    const resume = show(about.resume.href) ? el('div', { class: 'link-row' }, linkOrPending(about.resume)) : null;
 
-    const root = el('div', { class: 'dossier' },
-        el('div', { class: 'dossier-side' }, portrait, facts),
-        el('div', { class: 'dossier-main' }, summary, timeline, skills, resume));
+    const side = [portrait, facts].filter(Boolean);
+    const main = [summary, timeline, skills, resume].filter(Boolean);
+    const root = el('div', { class: side.length && main.length ? 'dossier' : 'dossier dossier-solo' },
+        side.length ? el('div', { class: 'dossier-side' }, side) : null,
+        main.length ? el('div', { class: 'dossier-main' }, main) : null);
 
-    return { root, blocks: [portrait, facts, summary, timeline, skills, resume], data: about };
+    return { root, blocks: [...side, ...main], data: about };
 }
 
 // ── PORTFOLIO / OPERATIONS ─────────────────────────────
 
 const opCode = (p) => p.id.toUpperCase();
+const visibleProjects = () => keep(projects, (p) => p.title);
+const visibleLinks = (links) => (DRAFTS ? links : links.filter((l) => l.href));
+
+function stackTags(stack, label = null) {
+    const items = keep(stack);
+    return items.length ? el('ul', { class: 'tags', attrs: label ? { 'aria-label': label } : null },
+        items.map((s) => el('li', { class: 'tag' }, txt(s, { note: false })))) : null;
+}
+
+function linkRow(links) {
+    const list = visibleLinks(links);
+    return list.length ? el('div', { class: 'link-row' }, list.map((l) => linkOrPending(l))) : null;
+}
 
 function projectCard(p, ctx) {
     const code = opCode(p);
     return el('article', { class: 'card' },
-        media(p.image, code, { alt: '' }),
+        show(p.image) ? media(p.image, code, { alt: '' }) : null,
         el('div', { class: 'card-body' },
-            el('p', { class: 'card-code' }, `${code} · `, txt(p.year, { note: false })),
+            el('p', { class: 'card-code' }, code, show(p.year) ? [' · ', txt(p.year, { note: false })] : null),
             el('h3', { class: 'card-title' },
                 el('button', { class: 'card-open', attrs: { type: 'button' }, dataset: { item: p.id },
                     on: { click: () => ctx.navigate(`#portfolio/${p.id}`) } }, txt(p.title))),
-            el('p', { class: 'card-summary' }, txt(p.summary, { note: false })),
-            el('ul', { class: 'tags', attrs: { 'aria-label': 'Stack' } },
-                p.stack.map((s) => el('li', { class: 'tag' }, txt(s, { note: false })))),
-            el('div', { class: 'link-row' }, p.links.map((l) => linkOrPending(l)))));
+            show(p.summary) ? el('p', { class: 'card-summary' }, txt(p.summary, { note: false })) : null,
+            stackTags(p.stack, 'Stack'),
+            linkRow(p.links)));
 }
 
 function renderPortfolio(itemId, ctx) {
+    const list = visibleProjects();
     if (itemId) {
-        const p = projects.find((x) => x.id === itemId);
+        const p = list.find((x) => x.id === itemId);
         if (p) return renderProject(p, ctx);
     }
+    if (!list.length) return { ...sealedRes('portfolio', ctx, projects), notFound: !!itemId };
+
+    const n = list.length;
     const intro = el('p', { class: 'file-meta' },
-        `${projects.length} OPERATIONS ON FILE · SELECT ONE TO OPEN ITS BRIEF`);
-    const grid = el('div', { class: 'card-grid' }, projects.map((p) => projectCard(p, ctx)));
+        `${n} OPERATION${n === 1 ? '' : 'S'} ON FILE · SELECT ONE TO OPEN ITS BRIEF`);
+    const grid = el('div', { class: 'card-grid' }, list.map((p) => projectCard(p, ctx)));
     return {
         root: el('div', { class: 'ops' }, intro, grid),
         blocks: [intro, ...grid.children],
@@ -223,21 +318,25 @@ function renderProject(p, ctx) {
     const head = el('header', { class: 'brief-head' },
         el('p', { class: 'card-code' }, `OPERATION ${code} · BRIEF`),
         el('h3', { class: 'brief-title' }, txt(p.title)),
-        el('p', { class: 'brief-summary' }, txt(p.summary)));
+        show(p.summary) ? el('p', { class: 'brief-summary' }, txt(p.summary)) : null);
 
-    const meta = el('dl', { class: 'facts facts-inline' },
-        el('div', { class: 'fact' }, el('dt', { text: 'ROLE' }), el('dd', null, txt(p.role))),
-        el('div', { class: 'fact' }, el('dt', { text: 'YEAR' }), el('dd', null, txt(p.year, { note: false }))),
-        el('div', { class: 'fact' }, el('dt', { text: 'STACK' }),
-            el('dd', null, el('ul', { class: 'tags' }, p.stack.map((s) => el('li', { class: 'tag' }, txt(s, { note: false })))))));
+    const stack = stackTags(p.stack);
+    const factRows = [
+        show(p.role) ? el('div', { class: 'fact' }, el('dt', { text: 'ROLE' }), el('dd', null, txt(p.role))) : null,
+        show(p.year) ? el('div', { class: 'fact' }, el('dt', { text: 'YEAR' }), el('dd', null, txt(p.year, { note: false }))) : null,
+        stack ? el('div', { class: 'fact' }, el('dt', { text: 'STACK' }), el('dd', null, stack)) : null,
+    ].filter(Boolean);
+    const meta = factRows.length ? el('dl', { class: 'facts facts-inline' }, factRows) : null;
 
-    const body = el('div', { class: 'prose' }, p.body.map((b) => para(b)));
-    const plate = media(p.image, code, { alt: '' });
-    const links = el('div', { class: 'link-row' }, p.links.map((l) => linkOrPending(l)));
+    const paras = keep(p.body);
+    const body = paras.length ? el('div', { class: 'prose' }, paras.map((b) => para(b))) : null;
+    const plate = show(p.image) ? media(p.image, code, { alt: '' }) : null;
+    const links = linkRow(p.links);
 
+    const blocks = [back, head, meta, body, plate, links].filter(Boolean);
     return {
-        root: el('article', { class: 'brief' }, back, head, meta, body, plate, links),
-        blocks: [back, head, meta, body, plate, links],
+        root: el('article', { class: 'brief' }, blocks),
+        blocks,
         data: p,
         focusEl: back,
     };
@@ -296,7 +395,7 @@ function renderLab(demo, ctx) {
             on: { click: () => ctx.onLab('reset') } }, el('span', { attrs: aria, text: '■ ' }), 'Reset view'));
 
     const stats = el('p', { class: 'lab-stats', attrs: { id: 'lab-stats' },
-        text: offline ? 'RENDERER OFFLINE · STATIC MODE' : 'TIER ---- · -- FPS · -- DRAW CALLS' });
+        text: offline ? 'RENDERER OFFLINE · STATIC MODE' : 'TIER\u00a0---- · --\u00a0FPS · --\u00a0DRAW\u00a0CALLS' });
 
     const card = el('article', { class: offline ? 'card lab is-offline' : 'card lab', attrs: { id: 'lab' } },
         el('div', { class: 'lab-info' },
@@ -317,26 +416,28 @@ function renderLab(demo, ctx) {
     return { card, firstControl: switches.firstElementChild };
 }
 
+/** External demo: a card with its image, or a compact row while it has none. */
 function demoCard(d) {
     const code = d.id.toUpperCase();
     const title = d.href
         ? el('a', { class: 'card-open', attrs: { href: d.href, target: '_blank', rel: 'noopener' } }, txt(d.title))
         : txt(d.title);
-    return el('article', { class: 'card', dataset: { item: d.id }, attrs: { tabindex: '-1' } },
-        media(d.image, code, { alt: '' }),
+    const launch = show(d.href) ? linkOrPending({ label: 'LAUNCH', href: d.href }) : null;
+    return el('article', { class: d.image ? 'card' : 'card card-row', dataset: { item: d.id }, attrs: { tabindex: '-1' } },
+        d.image ? media(d.image, code, { alt: '' }) : null,
         el('div', { class: 'card-body' },
             el('p', { class: 'card-code', text: `${code} · EXTERNAL` }),
             el('h3', { class: 'card-title' }, title),
-            el('p', { class: 'card-summary' }, txt(d.summary, { note: false })),
-            el('div', { class: 'link-row' }, linkOrPending({ label: 'LAUNCH', href: d.href }))));
+            show(d.summary) ? el('p', { class: 'card-summary' }, txt(d.summary, { note: false })) : null,
+            launch ? el('div', { class: 'link-row' }, launch) : null));
 }
 
 function renderDemos(itemId, ctx) {
     const lab = demos.find((d) => d.builtin === 'globe-lab');
-    const others = demos.filter((d) => d !== lab);
+    const others = keep(demos.filter((d) => d !== lab), (d) => d.title);
     const labView = lab ? renderLab(lab, ctx) : null;
     const cards = others.map(demoCard);
-    const grid = el('div', { class: 'card-grid' }, cards);
+    const grid = cards.length ? el('div', { class: 'card-grid sim-grid' }, cards) : null;
 
     const res = {
         root: el('div', { class: 'sims' }, labView?.card, grid),
@@ -364,67 +465,91 @@ function commRow(channel, label, ...content) {
         el('span', { class: 'comm-val' }, content));
 }
 
-function renderContact(_itemId, ctx) {
-    const note = el('div', { class: 'prose' }, para(contact.note));
-
-    let email;
-    if (contact.email) {
-        const copy = el('button', { class: 'copy-btn', attrs: { type: 'button', 'aria-label': 'Copy email address' },
-            text: 'COPY' });
-        copy.addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(contact.email);
-                copy.textContent = 'COPIED';
-                ctx.log('EMAIL COPIED');
-                ctx.announce('Email copied');
-                setTimeout(() => { copy.textContent = 'COPY'; }, 1600);
-            } catch {
-                ctx.log('CLIPBOARD UNAVAILABLE');
-            }
-        });
-        email = commRow('CH-01', 'EMAIL',
-            el('a', { class: 'comm-link', attrs: { href: `mailto:${contact.email}` }, text: contact.email }), copy);
-    } else {
-        email = commRow('CH-01', 'EMAIL', el('span', { class: 'link-pending', attrs: { role: 'link', 'aria-disabled': 'true' },
-            text: 'EMAIL — PENDING' }));
+function emailRow(ctx) {
+    if (!contact.email) {
+        return DRAFTS ? commRow('CH-01', 'EMAIL', el('span', { class: 'link-pending', attrs: { role: 'link', 'aria-disabled': 'true' },
+            text: 'EMAIL — PENDING' })) : null;
     }
-
-    const links = contact.links.map((l, i) => {
-        const ch = `CH-0${i + 2}`;
-        if (l.href) {
-            return el('a', { class: 'comm-row comm-row-link', attrs: { href: l.href, target: '_blank', rel: 'noopener' } },
-                el('span', { class: 'comm-ch', attrs: aria, text: ch }),
-                el('span', { class: 'comm-label', text: l.label }),
-                el('span', { class: 'comm-val' }, txt(l.handle, { note: false }),
-                    el('span', { attrs: aria, text: ' ↗' }),
-                    el('span', { class: 'sr-only', text: ' (opens in new tab)' })));
+    const copy = el('button', { class: 'copy-btn', attrs: { type: 'button', 'aria-label': 'Copy email address' },
+        text: 'COPY' });
+    copy.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(contact.email);
+            copy.textContent = 'COPIED';
+            ctx.log('EMAIL COPIED');
+            ctx.announce('Email copied');
+            setTimeout(() => { copy.textContent = 'COPY'; }, 1600);
+        } catch {
+            ctx.log('CLIPBOARD UNAVAILABLE');
         }
-        return commRow(ch, l.label, txt(l.handle, { note: false }),
-            el('span', { class: 'link-pending link-pending-sm', attrs: { role: 'link', 'aria-disabled': 'true' },
-                text: 'LINK PENDING' }));
     });
+    return commRow('CH-01', 'EMAIL',
+        el('a', { class: 'comm-link', attrs: { href: `mailto:${contact.email}` }, text: contact.email }), copy);
+}
 
-    const channels = el('div', { class: 'comms' }, email, links);
-    const domain = el('p', { class: 'comm-domain' },
-        el('span', { class: 'live-dot', attrs: aria }), site.domain);
+function linkRowFor(l, ch) {
+    if (l.href) {
+        const handle = isReal(l.handle) ? l.handle : l.href.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        return el('a', { class: 'comm-row comm-row-link', attrs: { href: l.href, target: '_blank', rel: 'noopener' } },
+            el('span', { class: 'comm-ch', attrs: aria, text: ch }),
+            el('span', { class: 'comm-label', text: l.label }),
+            el('span', { class: 'comm-val' }, handle,
+                el('span', { attrs: aria, text: ' ↗' }),
+                el('span', { class: 'sr-only', text: ' (opens in new tab)' })));
+    }
+    if (!DRAFTS) return null;
+    return commRow(ch, l.label, txt(l.handle, { note: false }),
+        el('span', { class: 'link-pending link-pending-sm', attrs: { role: 'link', 'aria-disabled': 'true' },
+            text: 'LINK PENDING' }));
+}
 
-    return { root: el('div', { class: 'comms-file' }, note, channels, domain), blocks: [note, channels, domain], data: contact };
+function renderContact(_itemId, ctx) {
+    const note = show(contact.note) ? el('div', { class: 'prose' }, para(contact.note)) : null;
+    const rows = [emailRow(ctx), ...contact.links.map((l, i) => linkRowFor(l, `CH-0${i + 2}`))].filter(Boolean);
+    const channels = rows.length ? el('div', { class: 'comms' }, rows) : null;
+
+    // The known domain is always on file: a small sign-off in drafts, the headline in production
+    const domain = DRAFTS
+        ? el('p', { class: 'comm-domain' }, el('span', { class: 'live-dot', attrs: aria }), site.domain)
+        : el('div', { class: 'freq' },
+            el('p', { class: 'freq-k' }, el('span', { class: 'live-dot', attrs: aria }), 'Primary frequency'),
+            el('p', { class: 'freq-v', text: site.domain }),
+            el('p', { class: 'freq-meta', attrs: aria, text: `${site.callsign} · LINK NOMINAL` }));
+
+    const strip = !DRAFTS && !rows.length ? sealedStrip('Direct channels sealed') : null;
+    const blocks = DRAFTS ? [note, channels, domain] : [domain, note, channels, strip];
+    const list = blocks.filter(Boolean);
+    return { root: el('div', { class: 'comms-file' }, list), blocks: list, data: contact };
 }
 
 // ── Entry point ────────────────────────────────────────
 
-const RENDERERS = { about: renderAbout, portfolio: renderPortfolio, demos: renderDemos, contact: renderContact };
+const RENDERERS = {
+    about: (_item, ctx) => renderAbout(ctx),
+    portfolio: renderPortfolio,
+    demos: renderDemos,
+    contact: renderContact,
+};
+
+/** Section ids whose production render is the sealed card (for boot + log lines). */
+export function sealedSections() {
+    if (DRAFTS) return [];
+    const out = [];
+    if (aboutIsEmpty()) out.push('about');
+    if (!visibleProjects().length) out.push('portfolio');
+    return out;
+}
 
 /**
  * Renders a file into the panel body.
  * ctx = { navigate(hash), onLab(action, value), labState, log(msg), announce(msg), webgl }
- * Returns { todoCount, focusEl | null, notFound }.
+ * Returns { todoCount, focusEl | null, notFound, sealed }.
  */
 export function renderSection(bodyEl, sectionId, itemId, ctx) {
     const render = RENDERERS[sectionId];
     if (!render) {
         bodyEl.replaceChildren();
-        return { todoCount: 0, focusEl: null, notFound: true };
+        return { todoCount: 0, focusEl: null, notFound: true, sealed: false };
     }
     const hasItem = sectionId === 'portfolio' || sectionId === 'demos';
     const res = render(hasItem ? itemId : null, ctx);
@@ -433,7 +558,7 @@ export function renderSection(bodyEl, sectionId, itemId, ctx) {
         b.classList.add('reveal');
         b.style.setProperty('--i', String(Math.min(i, 10)));
     });
-    bodyEl.replaceChildren(el('div', { class: `file file-${sectionId}` }, res.root));
+    bodyEl.replaceChildren(el('div', { class: `file file-${sectionId}${res.sealed ? ' is-sealed' : ''}` }, res.root));
 
     bodyEl.scrollTop = 0;
     if (res.scrollTo) {
@@ -445,5 +570,6 @@ export function renderSection(bodyEl, sectionId, itemId, ctx) {
         todoCount: countTodos(res.data),
         focusEl: res.focusEl ?? null,
         notFound: !!res.notFound || (!hasItem && !!itemId),
+        sealed: !!res.sealed,
     };
 }

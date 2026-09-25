@@ -7,12 +7,12 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import {
-    R, COLORS, buildBackdrop, buildStars, buildWire, buildNodes, uniqueVertices, buildAtmosphere,
+    R, COLORS, ORBIT_R, buildBackdrop, buildStars, buildWire, buildNodes, uniqueVertices, buildAtmosphere,
     buildInnerGlow, buildOrbit, buildBezel, buildMarker, buildTracers,
 } from './globe/parts.js';
 import {
     Tween, easeInOutCubic, easeOutCubic, easeOutExpo, easeInOutSine, linear,
-    latLonToVec3, vec3ToLatLon, nearestDir, round1, _v0, _v1, _v2, _q0, _q1, _m0, _ndc,
+    latLonToVec3, vec3ToLatLon, nearestDir, round1, _v0, _v1, _v2, _v3, _q0, _q1, _m0, _ndc,
 } from './globe/math.js';
 
 /**
@@ -22,13 +22,30 @@ import {
  * Rendering only. It never reads the DOM: main.js measures the layout and
  * hands over a viewport (setViewport) and a screen-space frame (setFrame);
  * the globe is drawn head-on into that circle via a camera lens shift.
+ *
+ * Focus / preview behaviour (on top of the §2.4 API):
+ * - focus(target, {duration, pulse}) may be called again mid-turn: the new
+ *   turn leaves at the globe's current angular velocity (no stop-and-go),
+ *   and re-focusing the node already marked keeps the marker lit.
+ * - While a node is focused the idle spin holds, so a hover preview stays
+ *   on its target; focus(null) releases it: an in-flight turn coasts out on
+ *   its own momentum and the idle spin eases back in.
+ * - locate({lat, lon}) → {node, lat, lon} | null resolves a target to its
+ *   node without turning (compare with pick().node for hover readouts).
+ * - Zoom is clamped to [ZOOM_MIN, ZOOM_MAX] = [0.5, 1.25]; 1 is the default.
  */
 
 const FOV = 35;
 const TAN_HALF = Math.tan(MathUtils.degToRad(FOV / 2));
 const MAX_OMEGA = 12.5;
+const ORBIT_MIN_SCALE = 1.2 / ORBIT_R;       // ring never shrinks inside 1.2 R
+const ORBIT_EDGE_PX = 14;
+const ORIENT_MIN_MS = 250;                   // shortest turn when arriving fast
+const ORIENT_MAX_V0 = 6;
+const SIDE_MS = 500;                         // sideways momentum bleeds off within this
+const SIDE_MAX_W = 4;                        // rad/s
 const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 1;
+const ZOOM_MAX = 1.25;
 const HOME_LAT = 15;
 const HOME_LON = 0;
 
@@ -48,13 +65,15 @@ const TIER_ORDER = ['high', 'medium', 'low'];
 // (every wire pixel passes a 0.3 threshold and the widest mips spread it
 // over the whole screen). Radius 0 + tapered mip weights keep the glow on
 // the wire; the higher threshold leaves stars, grid and rings unbloomed.
+// Strength and the first (tightest) mip stay low so the rim reads as crisp
+// strokes inside a halo, not one fused band.
 const BLOOM_RADIUS = 0;
 const BLOOM_THRESHOLD = 0.5;
-const BLOOM_MIP_WEIGHTS = [1.0, 0.7, 0.35, 0.12, 0.04];
-const BLOOM_INTRO = 2.0;
+const BLOOM_MIP_WEIGHTS = [0.75, 0.55, 0.3, 0.12, 0.04];
+const BLOOM_INTRO = 1.6;
 const MODES = {
-    home:    { tracers: 1,   bloom: 0.9, idle: 1 },
-    section: { tracers: 0.5, bloom: 0.8, idle: 0 },
+    home:    { tracers: 1,   bloom: 0.6, idle: 1 },
+    section: { tracers: 0.5, bloom: 0.5, idle: 0 },
 };
 
 const ADAPT_FRAMES = 120;
@@ -68,6 +87,8 @@ const X_AXIS = new Vector3(1, 0, 0);
 
 const toBool = (v) => (typeof v === 'string' ? !['', '0', 'false', 'off'].includes(v.trim().toLowerCase()) : !!v);
 const smoothstep = (a, b, x) => { const t = MathUtils.clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+// Cubic ease with start slope v0 and a resting end (v0 = 0 is smoothstep)
+const departEase = (v0) => (t) => t * (v0 + t * (3 - 2 * v0 + t * (v0 - 2)));
 
 export class WireframeGlobe {
     constructor(canvas, { quality = 'high', adaptive = true, reducedMotion = false, intro = false } = {}) {
@@ -120,6 +141,11 @@ export class WireframeGlobe {
         this._qTo = new Quaternion();
         this._orientPulse = false;
         this._orientKind = '';
+        this._orientAxis = new Vector3(0, 1, 0);    // world axis + angle of the turn
+        this._orientAngle = 0;
+        this._sideAxis = new Vector3(0, 1, 0);      // carried-over sideways spin, bled off
+        this._sideW = 0;                            //   over the first _sideT ms of a turn
+        this._sideT = 0;
         this._pointer = new Vector2();
 
         // ── Focus / marker / pulse ──
@@ -305,6 +331,8 @@ export class WireframeGlobe {
             if (this._focusNode >= 0 || this._markerTo > 0) {
                 this._focusNode = -1;
                 if (this._orientTw.active && this._orientKind === 'focus') {
+                    // Coast out of the turn; the idle spin blends back in
+                    this._angularVelocity(this._vel).clampLength(0, MAX_OMEGA);
                     this._orientTw.stop();
                     this._orientPulse = false;
                 }
@@ -318,6 +346,7 @@ export class WireframeGlobe {
 
         const node = nearestDir(this._nodeDirs, latLonToVec3(lat, lon, _v0));
         const n = this._focusDir.fromArray(this._nodeDirs, node * 3);
+        const same = node === this._focusNode && this._markerTo > 0;
         this._focusNode = node;
         this._placeMarker(n);
 
@@ -327,13 +356,21 @@ export class WireframeGlobe {
         _q1.setFromAxisAngle(Y_AXIS, 0.30);
         this._qTo.premultiply(_q0).premultiply(_q1);
 
-        const dur = this._reduced ? 0 : Math.max(0, Number(duration) || 0);
-        this._markerAlpha = 0;
-        this._fadeMarker(1, dur > 0 ? 300 : 0, dur * 0.7);
-        this._startOrient(dur, !!pulse, 'focus');
+        const dur = this._startOrient(this._reduced ? 0 : Math.max(0, Number(duration) || 0), !!pulse, 'focus');
+        if (!same) this._markerAlpha = 0;
+        this._fadeMarker(1, dur > 0 ? 300 : 0, same ? 0 : dur * 0.7);
         this._dirty = true;
 
         vec3ToLatLon(n, this._ll);
+        return { node, lat: round1(this._ll.lat), lon: round1(this._ll.lon) };
+    }
+
+    /** Resolve {lat, lon} to its nearest node without turning: {node, lat, lon} or null */
+    locate(target) {
+        const lat = Number(target?.lat), lon = Number(target?.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+        const node = nearestDir(this._nodeDirs, latLonToVec3(lat, lon, _v0));
+        vec3ToLatLon(_v0.fromArray(this._nodeDirs, node * 3), this._ll);
         return { node, lat: round1(this._ll.lat), lon: round1(this._ll.lon) };
     }
 
@@ -640,7 +677,9 @@ export class WireframeGlobe {
 
         // Orientation tween (focus / reset) or free integration
         if (this._orientTw.update(now)) {
-            this._spin.quaternion.slerpQuaternions(this._qFrom, this._qTo, this._orientTw.value);
+            const q = this._spin.quaternion.slerpQuaternions(this._qFrom, this._qTo, this._orientTw.value);
+            const side = this._sideProfile(this._orientTw, false);
+            if (side !== 0) q.premultiply(_q0.setFromAxisAngle(this._sideAxis, side));
             this._vel.set(0, 0, 0);
             animating = true;
             if (!this._orientTw.active && this._orientPulse) {
@@ -648,7 +687,8 @@ export class WireframeGlobe {
                 this.pulse();
             }
         } else if (performance.now() - this._lastRotateAt >= 100) {
-            const idle = motion ? 0.1 * this._spinRate * this._modeCur.idle : 0;
+            // Idle spin holds while a node is focused (hover preview stays put)
+            const idle = motion && this._focusNode < 0 ? 0.1 * this._spinRate * this._modeCur.idle : 0;
             _v0.set(0, idle, 0);
             this._vel.lerp(_v0, 1 - Math.pow(0.30, dt));
             let w = this._vel.length();
@@ -735,6 +775,10 @@ export class WireframeGlobe {
         const orbit = this._orbit;
         orbit.object3D.visible = this._opts.rings;
         orbit.object3D.rotation.y = 0.02 * time;
+        // Narrow portrait screens: pull the ring in so the satellites stay on screen
+        const f = this._frame;
+        const room = Math.min(f.cx, this._w - f.cx) - ORBIT_EDGE_PX;
+        orbit.object3D.scale.setScalar(MathUtils.clamp(room / (ORBIT_R * this._deff * 0.5), ORBIT_MIN_SCALE, 1));
         orbit.uniforms.uSatAngle.value = time * 0.35;
 
         // Bezel: faces the camera, slow roll
@@ -764,14 +808,17 @@ export class WireframeGlobe {
         const nW = _v1.copy(this._focusDir).applyQuaternion(this._spin.quaternion);
         const view = _v2.copy(this._camera.position).addScaledVector(nW, -R).normalize();
         const vis = this._markerAlpha * (0.25 + 0.75 * smoothstep(-0.2, 0.3, nW.dot(view)));
-        let pingAlpha = 0.5, pingScale = 1;
+        let pingAlpha = 0.35, pingScale = 1.7;
         if (motion) {
             const phase = (((this._time - this._markerPingAt) % MARKER_PING) + MARKER_PING) % MARKER_PING / MARKER_PING;
-            pingAlpha = 1 - phase;
-            pingScale = 1 + 1.6 * phase;
+            // Ping starts just outside the core and fades in, so the two
+            // rings never stack into one hot (bloomed) band
+            pingAlpha = (1 - phase) * Math.min(1, phase * 6);
+            pingScale = 1.2 + 1.6 * phase;
         }
         m.setOpacity(vis, pingAlpha, pingScale);
-        m.object3D.scale.setScalar(MathUtils.clamp(400 / this._deff, 1, 2));
+        // Constant on-screen size (ring ≈ 9 px radius), so it never shrinks to a dot on phones
+        m.object3D.scale.setScalar(MathUtils.clamp(400 / this._deff, 0.8, 3.2));
     }
 
     _render(dt) {
@@ -904,19 +951,84 @@ export class WireframeGlobe {
         }
     }
 
+    /**
+     * Turn the spin group to _qTo over `duration` ms. The turn leaves at the
+     * globe's current angular velocity, so a retarget mid-turn (hover preview
+     * → another preview → click) never stops dead: the component along the
+     * new turn shapes its ease, the sideways rest is bled off over ≤ 0.5 s.
+     * Returns the duration actually used (a fast approach may arrive sooner).
+     */
     _startOrient(duration, pulseOnArrival, kind) {
         this._orientKind = kind;
+        const w = this._angularVelocity(_v3);          // before the tween is replaced
         this._qFrom.copy(this._spin.quaternion);
         this._vel.set(0, 0, 0);
-        if (duration > 0) {
-            this._orientPulse = pulseOnArrival;
-            this._orientTw.start(this._now, duration);
-        } else {
+        this._sideW = 0;
+
+        // World-space axis / angle of the turn (shortest path, as slerp takes)
+        const d = _q0.copy(this._qTo).multiply(_q1.copy(this._qFrom).invert());
+        if (d.w < 0) d.set(-d.x, -d.y, -d.z, -d.w);
+        const angle = 2 * Math.acos(Math.min(1, d.w));
+        const s = Math.sqrt(Math.max(0, 1 - d.w * d.w));
+        if (s > 1e-6) this._orientAxis.set(d.x / s, d.y / s, d.z / s);
+        this._orientAngle = angle;
+
+        if (!(duration > 0)) {
             this._orientTw.stop();
             this._orientPulse = false;
             this._spin.quaternion.copy(this._qTo);
             if (pulseOnArrival) this.pulse();
+            return 0;
         }
+
+        let ease = easeInOutCubic;
+        const along = angle > 1e-3 ? w.dot(this._orientAxis) : 0;
+        if (Math.abs(along) > 1e-3) {
+            // Start slope v0 (in eased units); an approach faster than the
+            // requested pace decelerates in straight away and arrives sooner
+            let v0 = (along * duration) / 1000 / angle;
+            if (v0 > 3) {
+                duration = Math.max(ORIENT_MIN_MS, (3000 * angle) / along);
+                v0 = Math.min(ORIENT_MAX_V0, (along * duration) / 1000 / angle);
+            }
+            v0 = Math.max(v0, -1.5);
+            if (Math.abs(v0) > 0.02) ease = departEase(v0);
+        }
+        const side = w.addScaledVector(this._orientAxis, -along);
+        const sw = side.length();
+        if (sw > 1e-3) {
+            this._sideAxis.copy(side).divideScalar(sw);
+            this._sideW = Math.min(sw, SIDE_MAX_W);
+            this._sideT = Math.min(duration, SIDE_MS);
+        }
+        this._orientPulse = pulseOnArrival;
+        this._orientTw.start(this._now, duration, 0, ease);
+        return duration;
+    }
+
+    /**
+     * Sideways spin carried into a turn: angle ω·t·(1 − t/T)² (starts at ω,
+     * ends at rest by T). With rate = true returns its angular speed instead.
+     */
+    _sideProfile(tw, rate) {
+        if (this._sideW === 0) return 0;
+        const t = (tw.raw * tw.duration) / 1000, T = this._sideT / 1000;
+        if (!(T > 0) || t >= T) return 0;
+        const k = 1 - t / T;
+        return rate ? this._sideW * k * (1 - (3 * t) / T) : this._sideW * t * k * k;
+    }
+
+    /** Current world angular velocity (rad/s): the running turn's, else the free spin's */
+    _angularVelocity(out) {
+        const tw = this._orientTw;
+        if (tw.active && tw.duration > 0) {
+            const h = 0.01, a = Math.max(0, tw.raw - h), b = Math.min(1, tw.raw + h);
+            const slope = (tw.ease(b) - tw.ease(a)) / (b - a);
+            out.copy(this._orientAxis).multiplyScalar((this._orientAngle * slope * 1000) / tw.duration);
+            return out.addScaledVector(this._sideAxis, this._sideProfile(tw, true));
+        }
+        if (performance.now() - this._lastRotateAt < 100) return out.set(0, 0, 0);   // under a drag
+        return out.copy(this._vel);
     }
 
     _resetOrientation() {

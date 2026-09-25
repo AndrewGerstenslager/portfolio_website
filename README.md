@@ -17,10 +17,11 @@ npm run preview   # serve the production build locally
 
 All personal content lives in **`src/content.js`**. It is the only file you need to edit.
 
-- Every unknown field is written as `TODO('…')`. The site shows it as a hatched "awaiting data" placeholder labelled "— replace in src/content.js". Replace it with a plain string.
-- Links, images, the portrait and the email address are `null` until you set them, and show as "PENDING".
+- Every unknown field is written as `TODO('…')`; links, images, the portrait and the email address are `null` until you set them. Replace them with plain strings / paths.
+- **The live site never shows placeholders.** Unfilled fields are simply left out, and a file with nothing real in it yet shows a single "FILE SEALED · DECLASSIFICATION PENDING" card. Each field appears on the site as soon as you fill it in.
+- **Draft mode** shows what is left: the dev server (`npm run dev`) always runs in draft mode, and any build does with `?drafts` in the URL (e.g. `http://localhost:4173/?drafts#about`). Placeholders then render as hatched "awaiting data" boxes labelled "— replace in src/content.js", with a count in each file header.
 - Put images and your résumé in `public/` and reference them with absolute paths, e.g. `'/portrait.jpg'`, `'/resume.pdf'`, `'/projects/op-01.jpg'` (16:9).
-- `npm run dev` prints how many placeholder fields remain.
+- `npm run dev` also prints how many placeholder fields remain.
 
 ## Keyboard
 
@@ -35,10 +36,13 @@ All personal content lives in **`src/content.js`**. It is the only file you need
 
 Files have real URLs (`/#about`, `/#portfolio/op-02`, `/#demos/sim-00`), so deep links and the browser Back button work.
 
+With a mouse, hovering a command button turns the globe toward that file's sector, and hovering the globe shows the node and coordinates under the cursor; over a file's sector the tag names the file and a click opens it.
+
 ## URL switches
 
 - `?quality=high|medium|low` forces a render tier and turns off automatic downgrading.
 - `?debug` exposes `window.__ag = { globe, ui }` in the console.
+- `?drafts` shows content placeholders (see *Editing your content*).
 
 Without WebGL the site runs in a static mode (the globe is replaced by a still emblem, and everything else still works). With `prefers-reduced-motion` the boot sequence, idle spin and transitions are turned off.
 
@@ -49,4 +53,4 @@ Pushing to `master` runs `.github/workflows/deploy.yml`, which builds the site a
 ## Fonts and licences
 
 - **Departure Mono** by Helena Zhang is self-hosted from `public/fonts/` under the SIL Open Font License 1.1 (`public/fonts/DepartureMono-OFL.txt`).
-- **IBM Plex Mono** (panel body text) is loaded from Google Fonts under the SIL Open Font License 1.1.
+- **IBM Plex Mono** (panel body text, latin + latin-ext subsets) is self-hosted from `public/fonts/` under the SIL Open Font License 1.1 (`public/fonts/IBMPlexMono-OFL.txt`).

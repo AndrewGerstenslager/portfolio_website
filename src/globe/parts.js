@@ -244,7 +244,10 @@ export function buildAtmosphere(U) {
             uAtmo: U.uAtmo,
             uRadius: { value: R },
             uOuter: { value: ATMO_R },
-            uStrength: { value: 0.65 },
+            // Low strength + a steep limb: a thin inner edge and an outer
+            // halo, instead of a thick orange band fused with the rim wire
+            uStrength: { value: 0.4 },
+            uLimbPow: { value: 32 },
         },
         vertexShader: S.atmosphereVertex,
         fragmentShader: S.atmosphereFragment,
@@ -394,40 +397,34 @@ export function buildBezel() {
 // ── Target marker ──────────────────────────────────────
 export function buildMarker() {
     const hdr = (k) => new Color(COLORS.brandCore).multiplyScalar(k);
-    const ringGeo = new RingGeometry(0.045, 0.055, 40);
+    const ringGeo = new RingGeometry(0.046, 0.053, 48);
     const mat = (color) => new MeshBasicMaterial({
         color, transparent: true, opacity: 0, depthWrite: false, side: DoubleSide, blending: AdditiveBlending,
     });
     // Spec asked ×3.0 / ×2.5, but bloom then fills the ring's hole and it
     // reads as a white blob. The core sits just under the bloom threshold so
-    // it stays a crisp ring; the expanding ping and the beam carry the glow.
+    // it stays a crisp ring; the expanding ping carries the glow. (The old
+    // radial beam pointed almost straight at the camera once the node was
+    // focused, collapsed to a dot and bloomed into a hotspot, so it is gone.)
     const coreMat = mat(hdr(0.6));
-    const pingMat = mat(hdr(1.3));
+    const pingMat = mat(hdr(1.1));
     const core = new Mesh(ringGeo, coreMat);
     const ping = new Mesh(ringGeo, pingMat);
 
-    const beamGeo = new BufferGeometry();
-    beamGeo.setAttribute('position', new BufferAttribute(new Float32Array([0, 0, 0, 0, 0, R * 0.3]), 3));
-    const beamMat = new LineBasicMaterial({
-        color: hdr(1.2), transparent: true, opacity: 0, depthWrite: false, blending: AdditiveBlending,
-    });
-    const beam = new Line(beamGeo, beamMat);
-
-    for (const o of [core, ping, beam]) {
+    for (const o of [core, ping]) {
         o.frustumCulled = false;
         o.renderOrder = 6;
     }
     const group = new Group();
-    group.add(core, ping, beam);
+    group.add(core, ping);
     group.visible = false;
 
     return {
         object3D: group,
-        core, ping, beam,
-        materials: [coreMat, pingMat, beamMat],
+        core, ping,
+        materials: [coreMat, pingMat],
         setOpacity(vis, pingAlpha, pingScale) {
             coreMat.opacity = vis;
-            beamMat.opacity = 0.8 * vis;
             pingMat.opacity = pingAlpha * vis;
             ping.scale.setScalar(pingScale);
         },

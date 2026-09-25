@@ -1,9 +1,6 @@
 import './main.css';
-import { Vector3 } from 'three';
-import { WireframeGlobe } from './globe.js';
-import { GlobeControls } from './controls.js';
 import { UIController } from './ui.js';
-import { renderSection, renderTabs, countTodos, txt } from './panel.js';
+import { renderSection, renderTabs, countTodos, sealedSections, txt, isReal, DRAFTS } from './panel.js';
 import { site, sections, about, projects, demos, contact } from './content.js';
 
 // ── Elements & environment ─────────────────────────────
@@ -14,16 +11,19 @@ const panelEl = document.getElementById('panel');
 const panelBody = document.getElementById('panel-body');
 const panelTitle = document.getElementById('panel-title');
 const tabsEl = panelEl.querySelector('.panel-tabs');
+const navEl = document.getElementById('nav');
 const zoomRange = document.getElementById('zoom');
 const cursorReadout = document.querySelector('.readout-cursor');
 
 const ui = new UIController();
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+const finePointer = matchMedia('(hover: hover) and (pointer: fine)');
 const params = new URLSearchParams(location.search);
 const forced = ['high', 'medium', 'low'].includes(params.get('quality')) ? params.get('quality') : null;
 const quality = forced ?? ((matchMedia('(pointer: fine)').matches && (navigator.hardwareConcurrency || 4) >= 8) ? 'high' : 'medium');
 const allContent = { site, about, projects, demos, contact };
 const SECTION_BY_ID = new Map(sections.map((s) => [s.id, s]));
+const booting = html.dataset.phase === 'boot';
 
 // Everything main.js may call on the globe (§2.4). If the build ships a globe
 // without this surface, the page runs in static mode instead of throwing.
@@ -34,7 +34,7 @@ const GLOBE_API = [
     'getStats', 'on', 'start', 'stop', 'dispose',
 ];
 
-// ── 1. Globe (WebGL) with static fallback ──────────────
+// ── 1. Globe (WebGL, loaded after the text) with static fallback ──
 const hasGL = (() => {
     try {
         const c = document.createElement('canvas');
@@ -46,22 +46,14 @@ const hasGL = (() => {
     }
 })();
 
+// Three.js + bloom are ~450 KB, so they arrive as their own chunk while the HUD paints.
+const globeModules = hasGL ? Promise.all([import('./globe.js'), import('./controls.js')]) : null;
+
 let globe = null;
-if (hasGL) {
-    let g = null;
-    try {
-        g = new WireframeGlobe(canvas, {
-            quality, adaptive: !forced, reducedMotion: reduced.matches, intro: html.dataset.phase === 'boot',
-        });
-        const missing = GLOBE_API.filter((m) => typeof g[m] !== 'function');
-        if (missing.length) throw new Error(`globe API mismatch (${missing.join(', ')})`);
-        globe = g;
-    } catch (err) {
-        console.warn('[globe] static mode:', err?.message ?? err);
-        try { g?.dispose?.(); } catch { /* already broken */ }
-        globe = null;
-    }
-}
+let staticMode = false;
+let controls = null;
+let telTimer = 0;
+let introRequested = false;
 
 /** Run a globe call; a runtime fault drops the page to static mode instead of breaking the UI. */
 function withGlobe(fn) {
@@ -74,9 +66,6 @@ function withGlobe(fn) {
     }
 }
 
-let controls = null;
-let telTimer = 0;
-
 function degrade(err) {
     if (!globe) return;
     console.warn('[globe] runtime fault, static mode:', err);
@@ -87,14 +76,18 @@ function degrade(err) {
     try { controls?.dispose(); } catch { /* ignore */ }
     try { g.stop(); g.dispose(); } catch { /* ignore */ }
     enterStaticMode();
-    ui.log('RENDERER FAULT → STATIC MODE');
+    ui.log('GL FAULT → STATIC MODE');
 }
 
 function enterStaticMode() {
+    if (staticMode) return;
+    staticMode = true;
     html.classList.add('no-webgl');
     anchor.removeAttribute('tabindex');
     anchor.setAttribute('aria-label', 'Globe visual offline');
     ui.setOffline();
+    ui.setTarget(null);
+    ui.setTag(null);
     // A Globe Lab that is already on screen loses its controls in place
     const lab = document.getElementById('lab');
     if (lab) {
@@ -105,7 +98,7 @@ function enterStaticMode() {
     }
 }
 
-if (!globe) enterStaticMode();
+if (!hasGL) enterStaticMode();
 if (params.has('debug')) window.__ag = { get globe() { return globe; }, ui };
 
 // ── 2. Frame sync: CSS sizes #globe-anchor, the globe follows ──
@@ -169,7 +162,7 @@ function applyLab() {
     });
 }
 
-const impulse = new Vector3();
+const IMPULSE = { x: 0.4, y: 2.2, z: 0 };   // rad/s; the globe copies x/y/z
 let spinLogTimer = 0;
 
 function onLab(action, value) {
@@ -188,7 +181,7 @@ function onLab(action, value) {
             spinLogTimer = setTimeout(() => ui.log(`SPIN RATE ${labState.spinRate.toFixed(1)}×`), 400);
             break;
         case 'impulse':
-            withGlobe((g) => g.setAngularVelocity(impulse.set(0.4, 2.2, 0)));
+            withGlobe((g) => g.setAngularVelocity(IMPULSE));
             ui.log('IMPULSE APPLIED');
             return;
         case 'reset':
@@ -205,6 +198,8 @@ function onLab(action, value) {
 // ── 4. Router ──────────────────────────────────────────
 const state = { section: null, item: null };
 let lastOpener = null;
+let keyboardNav = false;   // last input was a key press (decides where focus lands)
+let routing = false;       // true while applyRoute moves focus (suppresses the nav preview)
 
 const ctx = {
     navigate: (hash) => navigate(hash),
@@ -212,7 +207,8 @@ const ctx = {
     labState,
     log: (msg) => ui.log(msg),
     announce: (msg) => ui.announce(msg),
-    get webgl() { return !!globe; },
+    // The globe may still be loading; only a failed or missing renderer counts as offline
+    get webgl() { return hasGL && !staticMode; },
 };
 
 function parse(hash) {
@@ -253,6 +249,11 @@ function stepFile(dir) {
 
 const isShown = (el) => !!el && el.isConnected && el.getClientRects().length > 0;
 
+function focusQuietly(el) {
+    routing = true;
+    try { el?.focus({ preventScroll: true }); } finally { routing = false; }
+}
+
 function applyRoute({ initial = false, fromHistory = false } = {}) {
     // 1. Parse
     const route = parse(location.hash);
@@ -269,6 +270,8 @@ function applyRoute({ initial = false, fromHistory = false } = {}) {
     const hadFocusInPanel = panelEl.contains(document.activeElement);
     state.section = section;
     state.item = item;
+    endPreview(false);
+    ui.setTag(null);
 
     // 2. View state
     ui.setView(section, { switching: !!(prev && section) });
@@ -283,6 +286,7 @@ function applyRoute({ initial = false, fromHistory = false } = {}) {
             ui.log('FILE NOT FOUND');
         }
     }
+    const pending = DRAFTS && res ? res.todoCount : 0;
 
     // 4. Glide the globe to its new slot (the attribute change above forces layout here)
     const still = initial || reduced.matches;
@@ -295,31 +299,33 @@ function applyRoute({ initial = false, fromHistory = false } = {}) {
     // 6. Target lock + header
     if (sec && section !== prev) {
         const r = withGlobe((g) => g.focus(sec.target, { duration: still ? 0 : (prev ? 900 : 1100), pulse: !initial })) ?? null;
-        ui.setPanelHeader(sec, r, res.todoCount, { switching: !!prev });
+        ui.setPanelHeader(sec, r, pending, { switching: !!prev });
     } else if (sec) {
-        ui.setPending(res.todoCount);
+        ui.setPending(pending);
     }
 
     // 7. Title
     document.title = sec ? `${sec.label} — ${site.name}` : site.name;
 
-    // 8. Focus (never on the initial deep load)
+    // 8. Focus (never on the initial deep load). Pointer users land on the quiet title;
+    //    keyboard users go straight to the item's first control.
     if (!initial) {
         if (sec) {
             const lost = !document.activeElement || document.activeElement === document.body ||
                 !document.activeElement.isConnected;
+            const itemFocus = keyboardNav ? res.focusEl : null;
             if (!fromHistory) {
                 const back = section === prev && prevItem && !item
                     ? panelBody.querySelector(`[data-item="${CSS.escape(prevItem)}"]`) : null;
-                (res.focusEl ?? back ?? panelTitle).focus({ preventScroll: true });
+                focusQuietly(itemFocus ?? (keyboardNav ? back : null) ?? panelTitle);
             } else if (lost || hadFocusInPanel) {
-                (res.focusEl ?? panelTitle).focus({ preventScroll: true });
+                focusQuietly(itemFocus ?? panelTitle);
             }
         } else if (prev) {
             const active = document.activeElement;
             if (hadFocusInPanel || !active || active === document.body || lastOpener === active) {
                 const opener = isShown(lastOpener) ? lastOpener : document.querySelector(`#nav .cmd[data-section="${prev}"]`);
-                opener?.focus({ preventScroll: true });
+                focusQuietly(opener);
             }
             lastOpener = null;
         }
@@ -336,9 +342,10 @@ function applyRoute({ initial = false, fromHistory = false } = {}) {
 }
 
 // ── 5. Commands, tabs, footer, close, skip link ────────
-document.getElementById('nav').addEventListener('click', (e) => {
+navEl.addEventListener('click', (e) => {
     const btn = e.target.closest('.cmd[data-section]');
     if (!btn) return;
+    endPreview(false);
     if (state.section === btn.dataset.section) {
         lastOpener = btn;
         closeFile();
@@ -364,7 +371,60 @@ document.querySelector('.skip-link').addEventListener('click', (e) => {
     [...document.querySelectorAll(pool)].find(isShown)?.focus();
 });
 
-// ── 6. Keyboard ────────────────────────────────────────
+// ── 6. Nav → globe preview (home, hover-capable pointers) ──
+// Hovering or keyboard-focusing a command for 150 ms turns the globe toward that
+// file's sector and shows the marker; leaving releases it and the idle spin resumes.
+const PREVIEW_DELAY = 150;
+let previewTimer = 0;
+let previewId = null;
+
+const canPreview = () => !!globe && !state.section && finePointer.matches && !reduced.matches &&
+    html.dataset.phase === 'ready';
+
+function schedulePreview(id) {
+    clearTimeout(previewTimer);
+    if (!canPreview()) return;
+    previewTimer = setTimeout(() => {
+        if (!canPreview() || previewId === id) return;
+        const sec = SECTION_BY_ID.get(id);
+        if (!sec) return;
+        previewId = id;
+        withGlobe((g) => g.focus(sec.target, { duration: 1000, pulse: false }));
+        ui.setPreview(id);
+    }, PREVIEW_DELAY);
+}
+
+/** release = hand the globe back to its idle spin (skipped when a route takes over). */
+function endPreview(release = true) {
+    clearTimeout(previewTimer);
+    previewTimer = 0;
+    if (previewId == null) return;
+    previewId = null;
+    ui.setPreview(null);
+    if (release && !state.section) withGlobe((g) => g.focus(null));
+}
+
+navEl.addEventListener('pointerover', (e) => {
+    const btn = e.target.closest('.cmd[data-section]');
+    if (btn && e.pointerType === 'mouse') schedulePreview(btn.dataset.section);
+});
+navEl.addEventListener('pointerout', (e) => {
+    const btn = e.target.closest('.cmd[data-section]');
+    if (!btn || btn.contains(e.relatedTarget)) return;
+    // Moving straight onto the next command keeps the globe busy instead of bouncing home
+    if (e.relatedTarget?.closest?.('#nav .cmd[data-section]')) return;
+    if (btn !== document.activeElement || !btn.matches(':focus-visible')) endPreview();
+});
+navEl.addEventListener('pointerdown', () => endPreview(false));
+navEl.addEventListener('focusin', (e) => {
+    const btn = e.target.closest('.cmd[data-section]');
+    if (btn && !routing && btn.matches(':focus-visible')) schedulePreview(btn.dataset.section);
+});
+navEl.addEventListener('focusout', (e) => {
+    if (!navEl.contains(e.relatedTarget)) endPreview();
+});
+
+// ── 7. Keyboard ────────────────────────────────────────
 document.addEventListener('keydown', (e) => {
     if (e.defaultPrevented || e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
     const t = e.target;
@@ -391,49 +451,75 @@ document.addEventListener('keydown', (e) => {
         stepFile(e.key === ']' ? 1 : -1);
     }
 });
+document.addEventListener('keydown', () => { keyboardNav = true; }, true);
+document.addEventListener('pointerdown', () => { keyboardNav = false; }, true);
 
 window.addEventListener('popstate', () => applyRoute({ fromHistory: true }));
 window.addEventListener('hashchange', () => applyRoute({ fromHistory: true }));
 
-// ── 7. Input + telemetry ───────────────────────────────
+// ── 8. Input + telemetry ───────────────────────────────
 let pointer = null;
 let lastDragLog = 0;
 const tel = { omegaDegPerSec: 0, facingLat: 0, facingLon: 0, facingNode: 0, zoom: 1, fps: 0, tier: quality, drawCalls: 0 };
 const pk = { hit: false, lat: 0, lon: 0, node: 0 };
+const pad3 = (n) => String(n).padStart(3, '0');
+const fmtLL = (lat, lon) => `${Math.abs(lat).toFixed(1).padStart(4, '0')}°${lat < 0 ? 'S' : 'N'} ${Math.abs(lon).toFixed(1).padStart(5, '0')}°${lon < 0 ? 'W' : 'E'}`;
 
-if (globe) {
-    try {
-        controls = new GlobeControls(canvas, {
-            keyTarget: anchor,
-            onRotate: (q) => withGlobe((g) => g.applyRotation(q)),
-            onVelocity: (v) => withGlobe((g) => g.setAngularVelocity(v)),
-            onZoom: (f) => {
-                withGlobe((g) => g.zoomBy(f));
-                if (globe) ui.setZoomUI(globe.getZoom());
-            },
-            onReset: () => {
-                withGlobe((g) => g.resetView());
-                ui.setZoomUI(1);
-                ui.log('VIEW RESET');
-            },
-            onPointer: (x, y) => {
-                pointer = x == null ? null : { x, y };
-                withGlobe((g) => g.setPointer(x, y));
-                if (!pointer) ui.setCursor(false);
-            },
-            onInteract: (kind) => {
-                html.dataset.interacted = '';
-                if (kind === 'drag' && performance.now() - lastDragLog > 3000) {
-                    lastDragLog = performance.now();
-                    ui.log('MANUAL ATTITUDE INPUT');
-                }
-                if (kind === 'zoom' && globe) ui.log(`MAG ${globe.getZoom().toFixed(2)}×`);
-            },
-        });
-    } catch (err) {
-        console.warn('[controls] unavailable:', err?.message ?? err);
-        controls = null;
+// Cursor tag: over a file's sector (≤ 9° from its marker node) the tag names it and a click opens it
+const HOT_COS = Math.cos(9 * Math.PI / 180);
+const unit = (lat, lon) => {
+    const a = lat * Math.PI / 180, b = lon * Math.PI / 180;
+    return [Math.cos(a) * Math.sin(b), Math.sin(a), Math.cos(a) * Math.cos(b)];
+};
+let TARGET_DIRS = sections.map((s) => ({ s, d: unit(s.target.lat, s.target.lon) }));
+let hotSection = null;
+let press = null;
+
+function sectionAt(lat, lon) {
+    const [x, y, z] = unit(lat, lon);
+    for (const { s, d } of TARGET_DIRS) if (x * d[0] + y * d[1] + z * d[2] >= HOT_COS) return s;
+    return null;
+}
+
+function setHot(sec) {
+    if (hotSection === sec) return;
+    hotSection = sec;
+    if (sec) html.dataset.hot = sec.id;
+    else delete html.dataset.hot;
+}
+
+/** Uses the pick telemetryTick just made. */
+function updateCursorTag() {
+    const tagOn = pointer && !press?.moved && !state.section && finePointer.matches;
+    if (!tagOn || !pk.hit) {
+        ui.setTag(null);
+        setHot(null);
+        return;
     }
+    const sec = sectionAt(pk.lat, pk.lon);
+    setHot(sec);
+    ui.setTag(sec ? `${sec.index} ${sec.file} · OPEN ►` : `NODE ${pad3(pk.node)} · ${fmtLL(pk.lat, pk.lon)}`, !!sec);
+}
+
+function attachCursorTag() {
+    canvas.addEventListener('pointermove', (e) => {
+        if (e.pointerType !== 'mouse') return;
+        ui.moveTag(e.clientX, e.clientY);
+        if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) press.moved = true;
+    });
+    canvas.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && e.button === 0) press = { x: e.clientX, y: e.clientY, moved: false };
+    });
+    canvas.addEventListener('pointerup', (e) => {
+        const p = press;
+        press = null;
+        if (!p || p.moved || e.pointerType !== 'mouse' || state.section) return;
+        const sec = hotSection;
+        if (!sec) return;
+        keyboardNav = false;
+        lastOpener = null;
+        navigate(`#${sec.id}`);
+    });
 }
 
 zoomRange?.addEventListener('input', () => {
@@ -446,10 +532,13 @@ function telemetryTick() {
     if (!globe) return;
     withGlobe((g) => g.getTelemetry(tel));
     ui.updateTelemetry(tel);
-    if (pointer && cursorReadout?.offsetParent) {
+    if (pointer) {
         withGlobe((g) => g.pick(pointer.x, pointer.y, pk));
-        ui.setCursor(pk.hit, pk.lat, pk.lon);
+        if (cursorReadout?.offsetParent) ui.setCursor(pk.hit, pk.lat, pk.lon);
+    } else {
+        pk.hit = false;
     }
+    updateCursorTag();
 }
 
 function startTelemetry() {
@@ -470,44 +559,144 @@ document.addEventListener('visibilitychange', () => {
 
 reduced.addEventListener('change', (e) => withGlobe((g) => g.setReducedMotion(e.matches)));
 
-// ── 8. Content that lives outside the panel ────────────
+function attachControls(GlobeControls) {
+    try {
+        controls = new GlobeControls(canvas, {
+            keyTarget: anchor,
+            onRotate: (q) => withGlobe((g) => g.applyRotation(q)),
+            onVelocity: (v) => withGlobe((g) => g.setAngularVelocity(v)),
+            onZoom: (f) => {
+                withGlobe((g) => g.zoomBy(f));
+                if (globe) ui.setZoomUI(globe.getZoom());
+            },
+            onReset: () => {
+                withGlobe((g) => g.resetView());
+                ui.setZoomUI(1);
+                ui.log('VIEW RESET');
+            },
+            onPointer: (x, y) => {
+                pointer = x == null ? null : { x, y };
+                withGlobe((g) => g.setPointer(x, y));
+                if (!pointer) {
+                    ui.setCursor(false);
+                    ui.setTag(null);
+                    setHot(null);
+                }
+            },
+            onInteract: (kind) => {
+                html.dataset.interacted = '';
+                if (kind === 'drag' && performance.now() - lastDragLog > 3000) {
+                    lastDragLog = performance.now();
+                    ui.log('MANUAL ATTITUDE INPUT');
+                }
+                if (kind === 'zoom' && globe) ui.log(`MAG ${globe.getZoom().toFixed(2)}×`);
+            },
+        });
+    } catch (err) {
+        console.warn('[controls] unavailable:', err?.message ?? err);
+        controls = null;
+    }
+}
+
+// ── 9. Content that lives outside the panel ────────────
 const tagline = document.getElementById('tagline');
-tagline.replaceChildren(txt(site.tagline));
-if (typeof site.metaDescription === 'string') {
+if (DRAFTS || isReal(site.tagline)) tagline.replaceChildren(txt(site.tagline));
+if (isReal(site.metaDescription)) {
     document.querySelector('meta[name="description"]')?.setAttribute('content', site.metaDescription);
 }
 
-// ── 9. Init ────────────────────────────────────────────
-const todoTotal = countTodos(allContent);
-const stats = withGlobe((g) => g.getStats()) ?? null;
+// ── 10. Globe attach (runs whenever the module chunk lands) ──
+let rendererReady;
+const rendererLine = new Promise((r) => { rendererReady = r; });
 
-ui.startClocks();
-ui.log(`SESSION OPEN · ${site.callsign}`);
-ui.log(globe ? `RENDERER WEBGL2 · ${quality.toUpperCase()}` : 'RENDERER OFFLINE · STATIC MODE');
-if (stats) ui.log(`MESH ${stats.nodes} NODES / ${stats.edges} EDGES`);
-ui.log(todoTotal ? `DOSSIER · ${todoTotal} FIELDS AWAITING DATA` : 'DOSSIER · ALL FIELDS LOADED');
+function attachGlobe([{ WireframeGlobe }, { GlobeControls }]) {
+    let g = null;
+    try {
+        g = new WireframeGlobe(canvas, {
+            quality, adaptive: !forced, reducedMotion: reduced.matches, intro: booting,
+        });
+        const missing = GLOBE_API.filter((m) => typeof g[m] !== 'function');
+        if (missing.length) throw new Error(`globe API mismatch (${missing.join(', ')})`);
+        globe = g;
+    } catch (err) {
+        console.warn('[globe] static mode:', err?.message ?? err);
+        try { g?.dispose?.(); } catch { /* already broken */ }
+        globe = null;
+        enterStaticMode();
+        ui.log('VISUAL OFFLINE · STATIC');
+        rendererReady(false);
+        return;
+    }
 
-withGlobe((g) => g.setViewport(canvas.clientWidth, canvas.clientHeight, window.devicePixelRatio || 1));
-applyRoute({ initial: true });
-applyLab();
-withGlobe((g) => g.start());
+    attachControls(GlobeControls);
+    if (finePointer.matches) attachCursorTag();
 
-if (globe) {
+    // Targets snap to the nearest mesh node; the file index and hot zones follow the marker
+    const nodes = new Map(sections.map((s) => [s.id, withGlobe((gl) => gl.locate?.(s.target)) ?? s.target]));
+    TARGET_DIRS = sections.map((s) => ({ s, d: unit(nodes.get(s.id).lat, nodes.get(s.id).lon) }));
+    ui.setFileSectors(nodes);
+
+    // Catch the globe up with whatever the router already did
+    withGlobe((gl) => gl.setViewport(canvas.clientWidth, canvas.clientHeight, window.devicePixelRatio || 1));
+    syncFrame(0);
+    withGlobe((gl) => gl.setMode(state.section ? 'section' : 'home'));
+    const sec = state.section ? SECTION_BY_ID.get(state.section) : null;
+    if (sec) ui.setTarget(withGlobe((gl) => gl.focus(sec.target, { duration: 0, pulse: false })) ?? null);
+    applyLab();
+    const z = Number(zoomRange?.value) / 100;
+    if (Number.isFinite(z) && z !== 1) withGlobe((gl) => gl.setZoom(z));
+    withGlobe((gl) => gl.start());
+    if (introRequested) withGlobe((gl) => gl.playIntro());
+    if (!globe) return;   // a fault above already switched to static mode
+
     new ResizeObserver(syncViewport).observe(canvas);
     new ResizeObserver(() => syncFrame(0)).observe(anchor);
     window.addEventListener('resize', syncViewport);
-    withGlobe((g) => g.on('tier', ({ tier }) => ui.log(`RENDER TIER → ${String(tier).toUpperCase()}`)));
+    withGlobe((gl) => gl.on('tier', ({ tier }) => ui.log(`RENDER TIER → ${String(tier).toUpperCase()}`)));
     startTelemetry();
     telemetryTick();
+
+    const stats = withGlobe((gl) => gl.getStats()) ?? null;
+    ui.log(`WEBGL2 · ${quality.toUpperCase()} TIER`);
+    if (stats) ui.log(`MESH ${stats.nodes}N / ${stats.edges}E`);
+    rendererReady(stats ?? true);
 }
 
-if (html.dataset.phase === 'boot') {
+// ── 11. Init ───────────────────────────────────────────
+const todoTotal = countTodos(allContent);
+const sealed = sealedSections().length;
+const dossier = DRAFTS
+    ? (todoTotal ? `${todoTotal} FIELDS AWAITING DATA` : 'ALL FIELDS LOADED')
+    : (sealed ? `${sealed} SEALED` : 'DECLASSIFIED');
+
+ui.startClocks();
+ui.setZoomUI(1);
+ui.log(`SESSION OPEN · ${site.callsign}`);
+if (!hasGL) ui.log('VISUAL OFFLINE · STATIC');
+ui.log(DRAFTS ? `DRAFTS · ${todoTotal} PENDING` : `DOSSIER · ${dossier}`);
+
+applyRoute({ initial: true });
+
+globeModules?.then(attachGlobe, (err) => {
+    console.warn('[globe] module failed to load, static mode:', err?.message ?? err);
+    enterStaticMode();
+    ui.log('VISUAL OFFLINE · STATIC');
+    rendererReady(false);
+});
+
+if (booting) {
     ui.runBoot({
-        webgl: !!globe,
-        tier: quality,
-        todoCount: todoTotal,
-        stats,
-        onReveal: () => withGlobe((g) => g.playIntro()),
+        renderer: hasGL
+            ? rendererLine.then((ok) => (ok ? `WEBGL2 · ${quality.toUpperCase()}` : { v: 'OFFLINE → STATIC MODE', warn: true }))
+            : { v: 'OFFLINE → STATIC MODE', warn: true },
+        mesh: hasGL
+            ? rendererLine.then((s) => (s?.nodes ? `${s.nodes} NODES / ${s.edges} EDGES` : { v: 'SKIPPED', warn: true }))
+            : null,
+        dossier,
+        onReveal: () => {
+            introRequested = true;
+            withGlobe((g) => g.playIntro());
+        },
         onDone: () => {},
     });
 } else {

@@ -9,6 +9,8 @@ import { sections, site } from './content.js';
 const SPARK_N = 60;
 const LOG_KEEP = 8;
 const BOOT_LINE_AT = [0, 110, 220, 330, 440, 550];
+export const ZOOM_MIN = 0.5;
+export const ZOOM_MAX = 1.25;
 
 const pad = (n, w) => String(n).padStart(w, '0');
 export const fmtLat = (lat) => `${Math.abs(lat).toFixed(1).padStart(4, '0')}°${lat < 0 ? 'S' : 'N'}`;
@@ -36,6 +38,10 @@ export class UIController {
         this.chipMag = $('c-mag');
         this.zoom = $('zoom');
         this.railL = document.querySelector('.rail-l');
+        this.files = $('files');
+        this.tag = $('cursor-tag');
+        this.tagText = this.tag?.querySelector('.tag-text');
+        this._renderFiles();
 
         // Sparkline
         const spark = $('t-spark');
@@ -104,12 +110,7 @@ export class UIController {
         this.type.textContent = label;
         this.type.style.setProperty('--n', String(label.length));
 
-        if (target) {
-            this.target.hidden = false;
-            this.target.textContent = `TARGET NODE ${pad(target.node, 3)} · ${fmtLat(target.lat)} ${fmtLon(target.lon)}`;
-        } else {
-            this.target.hidden = true;
-        }
+        this.setTarget(target);
         this.setPending(todoCount);
 
         // Footer: previous / next file (wrapping)
@@ -127,6 +128,16 @@ export class UIController {
         p.classList.remove('is-entering', 'is-switching');
         void p.offsetWidth;
         p.classList.add(switching ? 'is-switching' : 'is-entering');
+    }
+
+    /** Target line under the title; null (no globe yet / static mode) hides it. */
+    setTarget(target) {
+        if (target) {
+            this.target.hidden = false;
+            this.target.textContent = `TARGET NODE ${pad(target.node, 3)} · ${fmtLat(target.lat)} ${fmtLon(target.lon)}`;
+        } else {
+            this.target.hidden = true;
+        }
     }
 
     setPending(todoCount) {
@@ -164,7 +175,7 @@ export class UIController {
         if (this._tick % 5 === 0) {
             const stats = document.getElementById('lab-stats');
             if (stats && !this.html.classList.contains('no-webgl') && stats.offsetParent !== null) {
-                this._set(stats, `TIER ${tier} · ${Math.round(t.fps || 0)} FPS · ${t.drawCalls ?? 0} DRAW CALLS`);
+                this._set(stats, `TIER\u00a0${tier} · ${Math.round(t.fps || 0)}\u00a0FPS · ${t.drawCalls ?? 0}\u00a0DRAW\u00a0CALLS`);
             }
         }
         this._tick++;
@@ -200,9 +211,10 @@ export class UIController {
 
     setZoomUI(z) {
         if (!this.zoom) return;
-        const v = Math.round(Math.min(Math.max(z, 0.5), 1) * 100);
+        const v = Math.round(Math.min(Math.max(z, ZOOM_MIN), ZOOM_MAX) * 100);
+        const lo = ZOOM_MIN * 100;
         this.zoom.value = String(v);
-        this.zoom.style.setProperty('--fill', `${(v - 50) * 2}%`);
+        this.zoom.style.setProperty('--fill', `${((v - lo) / (ZOOM_MAX * 100 - lo)) * 100}%`);
         this.zoom.setAttribute('aria-valuetext', `${(v / 100).toFixed(2)} times`);
         this._set(this.mag, `${(v / 100).toFixed(2)}×`);
         this._set(this.chipMag, (v / 100).toFixed(2));
@@ -229,6 +241,55 @@ export class UIController {
             tick();
             setInterval(tick, 1000);
         }, 1000 - (Date.now() % 1000));
+    }
+
+    // ── File index (right rail) ────────────────────────────
+
+    /** Once the globe knows its mesh, show the node each file's marker lands on (id → {lat, lon}). */
+    setFileSectors(at) {
+        this._renderFiles(at);
+    }
+
+    /** Mirrors the telemetry rail: one row per file with its sector on the globe. */
+    _renderFiles(at = null) {
+        if (!this.files) return;
+        const sector = ({ lat, lon }) => `${pad(Math.abs(Math.round(lat)), 2)}°${lat < 0 ? 'S' : 'N'} ${pad(Math.abs(Math.round(lon)), 3)}°${lon < 0 ? 'W' : 'E'}`;
+        this.files.replaceChildren(...sections.map((s) => {
+            const li = document.createElement('li');
+            li.dataset.section = s.id;
+            const idx = document.createElement('span');
+            idx.className = 'f-idx';
+            idx.textContent = s.index;
+            const name = document.createElement('span');
+            name.className = 'f-name';
+            name.textContent = s.file;
+            const loc = document.createElement('span');
+            loc.className = 'f-at';
+            loc.textContent = sector(at?.get(s.id) ?? s.target);
+            li.append(idx, name, loc);
+            return li;
+        }));
+    }
+
+    /** Highlights the file the globe is previewing (null clears). */
+    setPreview(sectionId) {
+        if (!this.files) return;
+        for (const li of this.files.children) li.classList.toggle('is-hot', li.dataset.section === sectionId);
+    }
+
+    // ── Cursor tag (fine pointers over the globe) ──────────
+
+    moveTag(x, y) {
+        if (this.tag) this.tag.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    }
+
+    /** text = null hides the tag; hot = the cursor is on a file's target sector. */
+    setTag(text, hot = false) {
+        if (!this.tag) return;
+        this.tag.hidden = text == null;
+        if (text == null) return;
+        this._set(this.tagText, text);
+        this.tag.classList.toggle('is-hot', hot);
     }
 
     // ── System log ─────────────────────────────────────────
@@ -263,20 +324,20 @@ export class UIController {
      * hands over to the HUD intro at 1300 ms and to 'ready' at 1900 ms.
      * Any key or pointer press skips straight to 'ready'.
      */
-    runBoot({ webgl, tier, todoCount, stats, onReveal, onDone }) {
+    runBoot({ renderer, mesh, dossier, onReveal, onDone }) {
         const html = this.html;
         if (html.dataset.phase !== 'boot' || !this.boot) {
             onDone?.();
             return;
         }
 
-        const files = `${sections.length} FILES`;
+        // renderer / mesh may be promises of { v, warn } while the globe module loads
         const lines = [
             { k: `${site.callsign} // ${site.domain.toUpperCase()}`, v: 'BUILD 2026.09', head: true },
             { k: '> TYPEFACE', v: '…', font: true },
-            { k: '> RENDERER', v: webgl ? `WEBGL2 · ${String(tier).toUpperCase()}` : 'OFFLINE → STATIC MODE', warn: !webgl },
-            stats ? { k: '> GEODESIC MESH', v: `${stats.nodes} NODES / ${stats.edges} EDGES` } : null,
-            { k: '> DOSSIER', v: todoCount ? `${files} · ${todoCount} FIELDS AWAITING DATA` : `${files} · ALL FIELDS LOADED` },
+            { k: '> RENDERER', v: renderer },
+            mesh ? { k: '> GEODESIC MESH', v: mesh } : null,
+            { k: '> DOSSIER', v: `${sections.length} FILES · ${dossier}` },
             { k: '> ESTABLISHING ORBIT', cursor: true },
         ].filter(Boolean);
 
@@ -327,8 +388,17 @@ export class UIController {
                     row.append(dots);
                 }
                 const v = document.createElement('span');
-                v.className = line.warn ? 'v is-warn' : 'v';
-                v.textContent = line.v;
+                v.className = 'v';
+                const put = (r) => {
+                    v.textContent = typeof r === 'string' ? r : r.v;
+                    v.classList.toggle('is-warn', !!r.warn);
+                };
+                if (line.v && typeof line.v.then === 'function') {
+                    v.textContent = '…';
+                    line.v.then(put, () => put({ v: 'FAULT', warn: true }));
+                } else {
+                    put(line.v);
+                }
                 if (line.font) {
                     fontEl = v;
                     if (fontValue) setFont(fontValue);

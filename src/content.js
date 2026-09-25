@@ -58,7 +58,7 @@ export const demos = [
 
 export const contact = {
     note: TODO('PREFERRED WAY TO REACH YOU / RESPONSE TIME'),
-    email: null,                                          // 'name@domain' → mailto row + COPY button
+    email: null,                                          // an address string → mailto row + COPY button
     links: [
         { label: 'GITHUB',   handle: TODO('@HANDLE'),    href: null },
         { label: 'LINKEDIN', handle: TODO('/in/HANDLE'), href: null },
