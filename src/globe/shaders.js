@@ -192,7 +192,7 @@ export const innerGlowFragment = /* glsl */`
 
     void main() {
         vec3 v = normalize(cameraPosition - vWorld);
-        float f = pow(1.0 - abs(dot(normalize(vNormalW), v)), 2.2) * 0.16;
+        float f = pow(1.0 - abs(dot(normalize(vNormalW), v)), 2.2) * 0.05;
         gl_FragColor = vec4(uColor * f * uAtmo, 1.0);
         #include <colorspace_fragment>
     }

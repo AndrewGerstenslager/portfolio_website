@@ -246,7 +246,7 @@ export function buildAtmosphere(U) {
             uOuter: { value: ATMO_R },
             // Low strength + a steep limb: a thin inner edge and an outer
             // halo, instead of a thick orange band fused with the rim wire
-            uStrength: { value: 0.4 },
+            uStrength: { value: 0.03 },
             uLimbPow: { value: 32 },
         },
         vertexShader: S.atmosphereVertex,
