@@ -58,6 +58,8 @@ const TIERS = {
     high:   { prCap: 2,   composer: true,  msaa: true,  stars: 1600, tracers: 5 },
     medium: { prCap: 1.5, composer: true,  msaa: false, stars: 900,  tracers: 5 },
     low:    { prCap: 1,   composer: false, msaa: false, stars: 600,  tracers: 3 },
+    // Phones: full-res direct render, no half-float bloom pass (a flicker source on mobile GPUs)
+    lite:   { prCap: 2,   composer: false, msaa: false, stars: 900,  tracers: 5 },
 };
 const TIER_ORDER = ['high', 'medium', 'low'];
 
@@ -107,7 +109,7 @@ export class WireframeGlobe {
         const floatRT = renderer.extensions.has('EXT_color_buffer_float')
             || renderer.extensions.has('EXT_color_buffer_half_float');
         this._tier = TIERS[quality] ? quality : 'medium';
-        if (!floatRT) this._tier = 'low';
+        if (!floatRT && TIERS[this._tier].composer) this._tier = 'low';
         this._adaptive = !!adaptive;
         this._reduced = !!reducedMotion;
         this._listeners = { tier: [] };
@@ -277,6 +279,11 @@ export class WireframeGlobe {
         this._dpr = Number(devicePixelRatio) > 0 ? Number(devicePixelRatio) : 1;
         this._hasViewport = true;
         this._applyViewport();
+        // Resizing clears the canvas; redraw now so a mobile toolbar show/hide never paints a blank frame
+        if (this._running && this._hasFrame) {
+            this._updateLens();
+            this._render(0);
+        }
     }
 
     setFrame(frame, { duration = 0, swoop = false } = {}) {
@@ -928,7 +935,7 @@ export class WireframeGlobe {
 
     _sampleAdaptive(ms) {
         if (!this._adaptive || this._reduced || this._introPending) return;
-        if (this._tier === 'low' && !this._adaptTrial) return;
+        if ((this._tier === 'low' || this._tier === 'lite') && !this._adaptTrial) return;
         if (!this._adaptArmed) {
             // 120 frames after a played intro, otherwise 2 s after the first render
             if (this._introEndedAt >= 0) {

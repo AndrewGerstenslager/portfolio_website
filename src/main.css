@@ -1806,7 +1806,7 @@
   html[data-view="section"] .name-row { margin-top: 0; }
   html[data-view="section"] :is(.name-first, .name-last) { display: inline; }
   html[data-view="section"] .name { font-size: 16px; letter-spacing: .06em; }
-  html[data-view="section"] #globe-anchor { --globe-fit: .80; --globe-bezel: 0; --globe-fps: 30; }
+  html[data-view="section"] #globe-anchor { --globe-fit: .80; --globe-bezel: 0; --globe-fps: 0; }
   html[data-view="section"] :is(.chips, .drag-hint) { display: none; }
   html[data-view="section"] .corner { display: none; }
   /* Open file on phones: the sheet hugs its content (long files still scroll inside it) */
@@ -2132,7 +2132,7 @@
     }
 
     #globe-anchor { --globe-fit: .70; --globe-bezel: 0; --globe-fps: 0; }
-    html[data-view="section"] #globe-anchor { --globe-fit: .80; --globe-bezel: 0; --globe-fps: 30; }
+    html[data-view="section"] #globe-anchor { --globe-fit: .80; --globe-bezel: 0; --globe-fps: 0; }
     /* No room for the telemetry strip beside the 2×2 command grid: the globe fills the stage */
     .chips { display: none; }
     #globe-anchor { --chip-strip: 0px; }
