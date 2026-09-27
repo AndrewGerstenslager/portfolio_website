@@ -264,7 +264,6 @@ export const nodesVertex = /* glsl */`
         float a = facingFade(w.xyz);
 
         float inten = 1.6;
-        if (aTwinkle > 0.88) inten += 2.0 * pow(max(0.0, sin(uTime * 1.3 + aPhase * 6.2832)), 8.0);
         vec3 col = uColor * inten;
 
         float r = step(aSeed, uReveal);

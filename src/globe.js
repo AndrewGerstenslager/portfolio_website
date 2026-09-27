@@ -80,7 +80,6 @@ const ADAPT_FRAMES = 120;
 const ADAPT_LIMIT_MS = 22;
 const SCAN_EVERY = 8;
 const PULSE_MS = 1400;
-const MARKER_PING = 1.6;
 
 const Y_AXIS = new Vector3(0, 1, 0);
 const X_AXIS = new Vector3(1, 0, 0);
@@ -384,8 +383,7 @@ export class WireframeGlobe {
         } else {
             this._facingLocal(this._u.uPingDir.value);
         }
-        this._pulseTw.start(this._now, PULSE_MS);
-        this._markerPingAt = this._time;
+        // Deliberately no sweep/bloom swell: a bright ping read as flashing on phones
         this._markDirty();
     }
 
@@ -726,14 +724,6 @@ export class WireframeGlobe {
             if (w > 1e-4) animating = true;
         }
 
-        // Scan sweep (home, motion allowed)
-        if (motion && this._mode === 'home' && this._introEnded) {
-            this._scanClock += dt;
-            if (!this._scanTw.active && this._scanClock >= SCAN_EVERY) {
-                this._scanClock = 0;
-                this._scanTw.start(now, 1600);
-            }
-        }
         if (this._scanTw.update(now)) {
             U.uScanY.value = 1.3 - 2.6 * this._scanTw.value;
             U.uScanAmt.value = this._scanTw.active ? 0.6 : 0;
@@ -823,10 +813,10 @@ export class WireframeGlobe {
         if (this._opts.tracers) tr.update(motion ? dt : 0, time, this._deff, motion, motion);
 
         // Marker
-        this._updateMarker(motion);
+        this._updateMarker();
     }
 
-    _updateMarker(motion) {
+    _updateMarker() {
         const m = this._marker;
         m.object3D.visible = this._markerAlpha > 0.001;
         if (!m.object3D.visible) return;
@@ -834,15 +824,8 @@ export class WireframeGlobe {
         const nW = _v1.copy(this._focusDir).applyQuaternion(this._spin.quaternion);
         const view = _v2.copy(this._camera.position).addScaledVector(nW, -R).normalize();
         const vis = this._markerAlpha * (0.25 + 0.75 * smoothstep(-0.2, 0.3, nW.dot(view)));
-        let pingAlpha = 0.35, pingScale = 1.7;
-        if (motion) {
-            const phase = (((this._time - this._markerPingAt) % MARKER_PING) + MARKER_PING) % MARKER_PING / MARKER_PING;
-            // Ping starts just outside the core and fades in, so the two
-            // rings never stack into one hot (bloomed) band
-            pingAlpha = (1 - phase) * Math.min(1, phase * 6);
-            pingScale = 1.2 + 1.6 * phase;
-        }
-        m.setOpacity(vis, pingAlpha, pingScale);
+        // Static outer ring: an expanding ping flickered at the phone 30 fps cap
+        m.setOpacity(vis, 0.35, 1.7);
         // Constant on-screen size (ring ≈ 9 px radius), so it never shrinks to a dot on phones
         m.object3D.scale.setScalar(MathUtils.clamp(400 / this._deff, 0.8, 3.2));
     }
