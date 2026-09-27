@@ -19,8 +19,11 @@ const ui = new UIController();
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 const finePointer = matchMedia('(hover: hover) and (pointer: fine)');
 const params = new URLSearchParams(location.search);
-const forced = ['high', 'medium', 'low'].includes(params.get('quality')) ? params.get('quality') : null;
-const quality = forced ?? ((matchMedia('(pointer: fine)').matches && (navigator.hardwareConcurrency || 4) >= 8) ? 'high' : 'medium');
+const forced = ['high', 'medium', 'low', 'lite'].includes(params.get('quality')) ? params.get('quality') : null;
+// Touch devices get one fixed tier: switching tiers mid-animation re-sizes the canvas and reads as flicker
+const touch = matchMedia('(pointer: coarse)').matches;
+const quality = forced ?? (touch ? 'lite'
+    : (matchMedia('(pointer: fine)').matches && (navigator.hardwareConcurrency || 4) >= 8) ? 'high' : 'medium');
 const allContent = { site, about, projects, demos, contact };
 const SECTION_BY_ID = new Map(sections.map((s) => [s.id, s]));
 const booting = html.dataset.phase === 'boot';
@@ -632,7 +635,7 @@ function attachGlobe([{ WireframeGlobe }, { GlobeControls }]) {
     let g = null;
     try {
         g = new WireframeGlobe(canvas, {
-            quality, adaptive: !forced, reducedMotion: reduced.matches, intro: booting,
+            quality, adaptive: !forced && !touch, reducedMotion: reduced.matches, intro: booting,
         });
         const missing = GLOBE_API.filter((m) => typeof g[m] !== 'function');
         if (missing.length) throw new Error(`globe API mismatch (${missing.join(', ')})`);
@@ -713,6 +716,14 @@ ui.log(DRAFTS ? `DRAFTS · ${todoTotal} PENDING` : `DOSSIER · ${dossier}`);
 applyRoute({ initial: true });
 
 globeModules?.then(attachGlobe, (err) => {
+    // Usually a page left open across a deploy asking for a chunk that no longer exists: reload once
+    try {
+        if (!sessionStorage.getItem('ag-chunk-reload')) {
+            sessionStorage.setItem('ag-chunk-reload', '1');
+            location.reload();
+            return;
+        }
+    } catch { /* storage blocked: fall through to static mode */ }
     console.warn('[globe] module failed to load, static mode:', err?.message ?? err);
     enterStaticMode();
     ui.log('VISUAL OFFLINE · STATIC');
