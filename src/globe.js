@@ -69,11 +69,11 @@ const TIER_ORDER = ['high', 'medium', 'low'];
 // strokes inside a halo, not one fused band.
 const BLOOM_RADIUS = 0;
 const BLOOM_THRESHOLD = 0.5;
-const BLOOM_MIP_WEIGHTS = [0.75, 0.55, 0.3, 0.12, 0.04];
-const BLOOM_INTRO = 1.6;
+const BLOOM_MIP_WEIGHTS = [0.5, 0.1, 0, 0, 0];
+const BLOOM_INTRO = 0.5;
 const MODES = {
-    home:    { tracers: 1,   bloom: 0.6, idle: 1 },
-    section: { tracers: 0.5, bloom: 0.5, idle: 0 },
+    home:    { tracers: 1,   bloom: 0.1,  idle: 1 },
+    section: { tracers: 0.5, bloom: 0.08, idle: 0 },
 };
 
 const ADAPT_FRAMES = 120;
@@ -744,7 +744,7 @@ export class WireframeGlobe {
         if (this._pulseTw.update(now)) {
             const tp = this._pulseTw.raw * (PULSE_MS / 1000);
             U.uPingT.value = this._pulseTw.active ? this._pulseTw.raw : 0;
-            swell = this._pulseTw.active ? 0.5 * Math.sin(Math.PI * Math.min(tp / 0.7, 1)) : 0;
+            swell = this._pulseTw.active ? 0.15 * Math.sin(Math.PI * Math.min(tp / 0.7, 1)) : 0;
         }
 
         // Marker fade
